@@ -217,20 +217,33 @@
           <div class="terminal-dot"></div>
           <div class="terminal-dot"></div>
           <div class="terminal-dot"></div>
-          <div class="terminal-title">install MCP server</div>
+          <div class="terminal-title">Claude Code (CLI)</div>
         </div>
         <div class="terminal-body">
 <pre><span class="d"># Install the MCP server binary</span>
 <span class="cmd">$ cargo install --git https://github.com/Ataraxy-Labs/weave weave-mcp</span>
 
-<span class="d"># Add to Claude Desktop config (~/.config/claude/claude_desktop_config.json)</span>
+<span class="d"># Add to Claude Code (available in all projects)</span>
+<span class="cmd">$ claude mcp add --scope user weave -- weave-mcp</span>
+
+<span class="d"># Restart Claude Code, then verify with /mcp</span></pre>
+        </div>
+      </div>
+
+      <div class="terminal">
+        <div class="terminal-bar">
+          <div class="terminal-dot"></div>
+          <div class="terminal-dot"></div>
+          <div class="terminal-dot"></div>
+          <div class="terminal-title">Claude Desktop</div>
+        </div>
+        <div class="terminal-body">
+<pre><span class="d"># Add to Claude Desktop config (~/.config/claude/claude_desktop_config.json)</span>
 <span class="d">{</span>
   <span class="b">"mcpServers"</span>: <span class="d">{</span>
     <span class="b">"weave"</span>: <span class="d">{</span> <span class="b">"command"</span>: <span class="g">"weave-mcp"</span> <span class="d">}</span>
   <span class="d">}</span>
-<span class="d">}</span>
-
-<span class="d"># Agents now have access to all 9 weave tools</span></pre>
+<span class="d">}</span></pre>
         </div>
       </div>
     </section>

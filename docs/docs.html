@@ -223,18 +223,48 @@
     <section id="mcp">
       <h2>MCP server</h2>
       <p class="section-desc">
-        <a href="https://modelcontextprotocol.io" style="color:var(--cyan)">MCP</a> (Model Context Protocol) lets AI agents call tools. weave-mcp exposes 9 tools over stdio transport. Add it to Claude Desktop or any MCP-compatible client.
+        <a href="https://modelcontextprotocol.io" style="color:var(--cyan)">MCP</a> (Model Context Protocol) lets AI agents call tools. weave-mcp exposes 9 tools over stdio transport. Add it to Claude Code, Claude Desktop, or any MCP-compatible client.
       </p>
+
+      <h3 style="font-size: 16px; color: var(--accent); margin: 0 0 16px;">Setup</h3>
 
       <div class="terminal">
         <div class="terminal-bar">
           <div class="terminal-dot"></div>
           <div class="terminal-dot"></div>
           <div class="terminal-dot"></div>
-          <div class="terminal-title">claude_desktop_config.json</div>
+          <div class="terminal-title">install</div>
         </div>
         <div class="terminal-body">
-<pre><span class="d">{</span>
+<pre><span class="cmd">$ cargo install --git https://github.com/Ataraxy-Labs/weave weave-mcp</span></pre>
+        </div>
+      </div>
+
+      <div class="terminal">
+        <div class="terminal-bar">
+          <div class="terminal-dot"></div>
+          <div class="terminal-dot"></div>
+          <div class="terminal-dot"></div>
+          <div class="terminal-title">Claude Code (CLI)</div>
+        </div>
+        <div class="terminal-body">
+<pre><span class="d"># Add to Claude Code (available in all projects)</span>
+<span class="cmd">$ claude mcp add --scope user weave -- weave-mcp</span>
+
+<span class="d"># Restart Claude Code, then verify with /mcp</span></pre>
+        </div>
+      </div>
+
+      <div class="terminal">
+        <div class="terminal-bar">
+          <div class="terminal-dot"></div>
+          <div class="terminal-dot"></div>
+          <div class="terminal-dot"></div>
+          <div class="terminal-title">Claude Desktop</div>
+        </div>
+        <div class="terminal-body">
+<pre><span class="d"># Add to ~/.config/claude/claude_desktop_config.json</span>
+<span class="d">{</span>
   <span class="b">"mcpServers"</span>: <span class="d">{</span>
     <span class="b">"weave"</span>: <span class="d">{</span>
       <span class="b">"command"</span>: <span class="g">"weave-mcp"</span>,
