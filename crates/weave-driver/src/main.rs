@@ -71,6 +71,10 @@ fn main() {
     // Print stats to stderr
     eprintln!("weave [{}]: {}", file_path, result.stats);
 
+    // Optionally record merge in CRDT state
+    #[cfg(feature = "crdt")]
+    record_merge_in_crdt(&file_path, &result.content);
+
     if result.is_clean() {
         process::exit(0);
     } else {
@@ -91,4 +95,22 @@ fn main() {
 
 fn is_binary(content: &str) -> bool {
     content.as_bytes().iter().take(8192).any(|&b| b == 0)
+}
+
+/// Record merge results in CRDT state if `.weave/state.automerge` exists.
+/// Fails silently — this is purely advisory and must never break the merge.
+#[cfg(feature = "crdt")]
+fn record_merge_in_crdt(file_path: &str, _merged_content: &str) {
+    let _ = (|| -> Result<(), Box<dyn std::error::Error>> {
+        let repo_root = weave_core::git::find_repo_root()?;
+        let state_path = repo_root.join(".weave").join("state.automerge");
+        if !state_path.exists() {
+            return Ok(());
+        }
+        let mut state = weave_crdt::EntityStateDoc::open(&state_path)?;
+        let registry = sem_core::parser::plugins::create_default_registry();
+        weave_crdt::sync_from_files(&mut state, &repo_root, &[file_path.to_string()], &registry)?;
+        state.save()?;
+        Ok(())
+    })();
 }

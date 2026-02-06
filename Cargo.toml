@@ -1,7 +1,9 @@
 [workspace]
 members = [
     "crates/weave-core",
+    "crates/weave-crdt",
     "crates/weave-driver",
     "crates/weave-cli",
+    "crates/weave-mcp",
 ]
 resolver = "2"

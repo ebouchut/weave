@@ -25,6 +25,33 @@ enum Commands {
         #[arg(long)]
         file: Option<String>,
     },
+    /// Show entity and agent state from CRDT
+    Status {
+        /// Show entities for a specific file
+        #[arg(long)]
+        file: Option<String>,
+        /// Show status for a specific agent
+        #[arg(long)]
+        agent: Option<String>,
+    },
+    /// Claim an entity before editing
+    Claim {
+        /// Agent identifier
+        agent_id: String,
+        /// File path containing the entity
+        file_path: String,
+        /// Entity name to claim
+        entity_name: String,
+    },
+    /// Release a previously claimed entity
+    Release {
+        /// Agent identifier
+        agent_id: String,
+        /// File path containing the entity
+        file_path: String,
+        /// Entity name to release
+        entity_name: String,
+    },
 }
 
 fn main() {
@@ -37,6 +64,19 @@ fn main() {
         Commands::Preview { ref branch, ref file } => {
             commands::preview::run(branch, file.as_deref())
         }
+        Commands::Status { ref file, ref agent } => {
+            commands::status::run(file.as_deref(), agent.as_deref())
+        }
+        Commands::Claim {
+            ref agent_id,
+            ref file_path,
+            ref entity_name,
+        } => commands::claim::run(agent_id, file_path, entity_name),
+        Commands::Release {
+            ref agent_id,
+            ref file_path,
+            ref entity_name,
+        } => commands::release::run(agent_id, file_path, entity_name),
     };
 
     if let Err(e) = result {

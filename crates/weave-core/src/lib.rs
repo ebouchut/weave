@@ -1,4 +1,5 @@
 pub mod conflict;
+pub mod git;
 pub mod merge;
 pub mod reconstruct;
 pub mod region;
