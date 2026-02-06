@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>weave — Changelog</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    .commit {
+      padding: 28px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .commit:last-child { border-bottom: none; }
+    .commit-header {
+      display: flex; align-items: baseline; gap: 12px; margin-bottom: 12px; flex-wrap: wrap;
+    }
+    .commit-hash {
+      font-size: 12px; color: var(--cyan); background: var(--surface);
+      padding: 2px 8px; border-radius: 4px; text-decoration: none;
+    }
+    .commit-hash:hover { color: var(--accent); }
+    .commit-date { font-size: 12px; color: var(--dim); }
+    .commit-title {
+      font-size: 16px; font-weight: 600; color: var(--accent);
+      letter-spacing: -0.3px;
+    }
+    .commit-body { margin-top: 12px; }
+    .commit-body p {
+      font-size: 13px; color: var(--dim); line-height: 1.7; margin-bottom: 10px;
+    }
+    .commit-body p strong { color: var(--fg); }
+    .commit-body ul {
+      font-size: 13px; color: var(--dim); line-height: 1.7;
+      margin: 0 0 12px 20px;
+    }
+    .commit-body li { margin-bottom: 4px; }
+    .commit-body code {
+      color: var(--cyan); font-size: 12px; background: var(--surface);
+      padding: 1px 5px; border-radius: 3px;
+    }
+    .commit-tags { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+    .commit-tag {
+      font-size: 10px; padding: 2px 8px; border-radius: 4px; font-weight: 600;
+    }
+    .lesson {
+      margin-top: 16px; padding: 14px 18px;
+      border-left: 3px solid var(--purple);
+      background: var(--surface); border-radius: 0 8px 8px 0;
+    }
+    .lesson-label {
+      font-size: 10px; color: var(--purple); font-weight: 600;
+      text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px;
+    }
+    .lesson p {
+      font-size: 12px; color: var(--dim); line-height: 1.7; margin: 0;
+    }
+    .lesson code {
+      color: var(--cyan); font-size: 11px; background: none; padding: 0;
+    }
+    .stats {
+      display: flex; gap: 16px; margin-top: 10px; font-size: 12px;
+    }
+    .stats .added { color: var(--green); }
+    .stats .removed { color: var(--red); }
+    .stats .files { color: var(--dim); }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <nav>
+      <a class="logo" href="index.html">weave</a>
+      <div class="links">
+        <a href="index.html">Home</a>
+        <a href="docs.html">Docs</a>
+        <a href="learn.html">Learn</a>
+        <a href="changelog.html" class="active">Changelog</a>
+        <a href="https://github.com/Ataraxy-Labs/weave">GitHub</a>
+      </div>
+    </nav>
+
+    <!-- Page header -->
+    <div style="padding: 48px 0 16px;">
+      <h1 style="font-size: 28px; font-weight: 700; color: var(--accent); letter-spacing: -1px; margin-bottom: 8px;">Changelog</h1>
+      <p style="font-size: 14px; color: var(--dim); line-height: 1.7;">Every commit, the technical decisions behind it, and what we learned building weave.</p>
+    </div>
+
+    <section style="border-top: none; padding-top: 12px;">
+
+      <!-- Commit: Lazy MCP init -->
+      <div class="commit">
+        <div class="commit-header">
+          <a class="commit-hash" href="https://github.com/Ataraxy-Labs/weave/commit/a72158d">a72158d</a>
+          <span class="commit-date">Feb 6, 2026</span>
+        </div>
+        <div class="commit-title">Defer repo discovery to first tool call in weave-mcp</div>
+        <div class="commit-tags">
+          <span class="commit-tag" style="background: #f8717122; color: var(--red);">bugfix</span>
+          <span class="commit-tag" style="background: #22d3ee22; color: var(--cyan);">weave-mcp</span>
+        </div>
+        <div class="commit-body">
+          <p>The MCP server was crashing on startup when launched from outside a git repository. Claude Code starts MCP servers from the user's home directory, which usually isn't a git repo.</p>
+          <p><strong>The fix:</strong> Replaced eager <code>find_repo_root()</code> in <code>main()</code> with lazy initialization via <code>tokio::sync::MappedMutexGuard</code>. The server now starts instantly and only discovers the repo root when a tool is actually called.</p>
+          <ul>
+            <li>Used <code>Arc&lt;Mutex&lt;Option&lt;RepoContext&gt;&gt;&gt;</code> for lazy init pattern</li>
+            <li><code>MutexGuard::map()</code> projects through the Option to return a mapped guard</li>
+            <li>Server responds to MCP handshake immediately &mdash; tools fail gracefully with a clear error if no repo is found</li>
+          </ul>
+        </div>
+        <div class="lesson">
+          <div class="lesson-label">Lesson learned</div>
+          <p>MCP servers must start without assumptions about the working directory. Lazy initialization is critical &mdash; defer I/O and environment discovery to the first actual tool call, not server startup. <code>MutexGuard::map(guard, |opt| opt.as_mut().unwrap())</code> is the idiomatic Rust pattern for projecting a mutex guard through a wrapper type.</p>
+        </div>
+        <div class="stats">
+          <span class="files">2 files</span>
+          <span class="added">+73</span>
+          <span class="removed">-44</span>
+        </div>
+      </div>
+
+      <!-- Commit: Claude Code MCP docs -->
+      <div class="commit">
+        <div class="commit-header">
+          <a class="commit-hash" href="https://github.com/Ataraxy-Labs/weave/commit/3197ae1">3197ae1</a>
+          <span class="commit-date">Feb 6, 2026</span>
+        </div>
+        <div class="commit-title">Add Claude Code MCP setup instructions to docs</div>
+        <div class="commit-tags">
+          <span class="commit-tag" style="background: #60a5fa22; color: var(--blue);">docs</span>
+          <span class="commit-tag" style="background: #22d3ee22; color: var(--cyan);">weave-mcp</span>
+        </div>
+        <div class="commit-body">
+          <p>Documentation only showed Claude Desktop setup (JSON config file). Added the <code>claude mcp add</code> command for Claude Code CLI users.</p>
+          <p><strong>Key detail:</strong> <code>--scope user</code> is required to make the MCP server available across all projects. Without it, the server is scoped to the current project directory and won't appear in <code>/mcp</code> when running Claude Code elsewhere.</p>
+        </div>
+        <div class="lesson">
+          <div class="lesson-label">Lesson learned</div>
+          <p>Claude Code has two MCP scopes: <code>project</code> (default, stored in project <code>.claude.json</code>) and <code>user</code> (global, stored in <code>~/.claude.json</code>). For tools that should work across repos, always use <code>--scope user</code>.</p>
+        </div>
+        <div class="stats">
+          <span class="files">2 files</span>
+          <span class="added">+51</span>
+          <span class="removed">-8</span>
+        </div>
+      </div>
+
+      <!-- Commit: Docs site split -->
+      <div class="commit">
+        <div class="commit-header">
+          <a class="commit-hash" href="https://github.com/Ataraxy-Labs/weave/commit/a5d130d">a5d130d</a>
+          <span class="commit-date">Feb 6, 2026</span>
+        </div>
+        <div class="commit-title">Split docs into multi-page site with learnings blog</div>
+        <div class="commit-tags">
+          <span class="commit-tag" style="background: #60a5fa22; color: var(--blue);">docs</span>
+        </div>
+        <div class="commit-body">
+          <p>Broke the monolithic 799-line <code>index.html</code> into three focused pages:</p>
+          <ul>
+            <li><strong>index.html</strong> &mdash; landing page (hero, comparison, quick start)</li>
+            <li><strong>docs.html</strong> &mdash; reference (architecture, CRDT, MCP tools, CLI)</li>
+            <li><strong>learn.html</strong> &mdash; deep dive articles on git vs weave merging and CRDTs</li>
+          </ul>
+          <p>Extracted shared CSS into <code>style.css</code> with article-specific styles for the learn page (blog-style layout with highlight boxes and code examples).</p>
+        </div>
+        <div class="stats">
+          <span class="files">4 files</span>
+          <span class="added">+928</span>
+          <span class="removed">-555</span>
+        </div>
+      </div>
+
+      <!-- Commit: sem-core git dependency -->
+      <div class="commit">
+        <div class="commit-header">
+          <a class="commit-hash" href="https://github.com/Ataraxy-Labs/weave/commit/bc29565">bc29565</a>
+          <span class="commit-date">Feb 6, 2026</span>
+        </div>
+        <div class="commit-title">Use git dependency for sem-core instead of local path</div>
+        <div class="commit-tags">
+          <span class="commit-tag" style="background: #f8717122; color: var(--red);">bugfix</span>
+          <span class="commit-tag" style="background: #fb923c22; color: var(--orange);">cargo</span>
+        </div>
+        <div class="commit-body">
+          <p>All 5 Cargo.toml files referenced <code>sem-core</code> via local path (<code>path = "../../../sem/crates/sem-core"</code>). This works for local development but breaks <code>cargo install --git</code> because the relative path doesn't exist on the user's machine.</p>
+          <p><strong>Fix:</strong> Changed all references to <code>sem-core = { git = "https://github.com/Ataraxy-Labs/sem", version = "0.2" }</code>. Cargo resolves the crate from the git repo's workspace automatically.</p>
+        </div>
+        <div class="lesson">
+          <div class="lesson-label">Lesson learned</div>
+          <p>When publishing a crate that depends on another workspace crate from a different repo, use <code>git = "..."</code> dependencies, not <code>path = "..."</code>. Cargo resolves workspace members from git URLs automatically &mdash; just point to the repo root and Cargo finds the crate by name.</p>
+        </div>
+        <div class="stats">
+          <span class="files">6 files</span>
+          <span class="added">+14</span>
+          <span class="removed">-7</span>
+        </div>
+      </div>
+
+      <!-- Commit: Fix cargo install -->
+      <div class="commit">
+        <div class="commit-header">
+          <a class="commit-hash" href="https://github.com/Ataraxy-Labs/weave/commit/821cda0">821cda0</a>
+          <span class="commit-date">Feb 6, 2026</span>
+        </div>
+        <div class="commit-title">Fix cargo install commands (--git and --path can't be combined)</div>
+        <div class="commit-tags">
+          <span class="commit-tag" style="background: #f8717122; color: var(--red);">bugfix</span>
+          <span class="commit-tag" style="background: #fb923c22; color: var(--orange);">cargo</span>
+        </div>
+        <div class="commit-body">
+          <p>Documentation had <code>cargo install --git &lt;url&gt; --path crates/weave-mcp</code> which doesn't work &mdash; <code>--git</code> and <code>--path</code> are mutually exclusive flags in Cargo.</p>
+          <p><strong>Correct syntax:</strong> <code>cargo install --git &lt;url&gt; &lt;crate-name&gt;</code>. For a workspace repo, pass the binary crate name as a positional argument. Cargo looks through all workspace members to find the matching <code>[package]</code> name.</p>
+        </div>
+        <div class="lesson">
+          <div class="lesson-label">Lesson learned</div>
+          <p><code>cargo install --git</code> takes the crate name as a positional arg, not via <code>--path</code>. The correct form: <code>cargo install --git https://github.com/org/repo crate-name</code>. Cargo clones the repo, finds the crate in the workspace, and builds + installs it.</p>
+        </div>
+        <div class="stats">
+          <span class="files">1 file</span>
+          <span class="added">+4</span>
+          <span class="removed">-4</span>
+        </div>
+      </div>
+
+      <!-- Commit: Phase 2 + 3 -->
+      <div class="commit">
+        <div class="commit-header">
+          <a class="commit-hash" href="https://github.com/Ataraxy-Labs/weave/commit/49aae1b">49aae1b</a>
+          <span class="commit-date">Feb 6, 2026</span>
+        </div>
+        <div class="commit-title">Add CRDT entity state (Phase 2) and MCP server (Phase 3)</div>
+        <div class="commit-tags">
+          <span class="commit-tag" style="background: #a78bfa22; color: var(--purple);">phase 2</span>
+          <span class="commit-tag" style="background: #22d3ee22; color: var(--cyan);">phase 3</span>
+          <span class="commit-tag" style="background: #4ade8022; color: var(--green);">major</span>
+        </div>
+        <div class="commit-body">
+          <p>The largest commit &mdash; two new crates adding agent coordination to weave.</p>
+          <p><strong>weave-crdt:</strong> Automerge 0.5 backed entity state. Advisory claims, agent registration, heartbeat-based liveness, stale cleanup, and conflict detection. 20 tests covering all operations.</p>
+          <p><strong>weave-mcp:</strong> MCP server with 9 tools over stdio transport using <code>rmcp 0.14</code>. Wraps all CRDT operations + entity extraction + merge preview into callable agent tools.</p>
+          <p><strong>Three hard bugs hit during implementation:</strong></p>
+          <ul>
+            <li><strong>Automerge 0.5 API:</strong> <code>put()</code>, <code>put_object()</code>, <code>delete()</code>, <code>insert()</code> methods on <code>AutoCommit</code> require <code>use automerge::transaction::Transactable;</code> in scope. Without it, the compiler says the methods don't exist &mdash; misleading since <code>AutoCommit</code> clearly implements them.</li>
+            <li><strong>rmcp schemars re-export:</strong> <code>#[derive(rmcp::schemars::JsonSchema)]</code> doesn't work because derive macros resolve at compile time against the local crate namespace. Fix: add <code>schemars = "1"</code> as a direct dependency and use <code>#[derive(schemars::JsonSchema)]</code> instead.</li>
+            <li><strong>rmcp stdio transport:</strong> <code>server.serve(tokio::io::stdin())</code> fails &mdash; stdio transport requires both directions: <code>server.serve((tokio::io::stdin(), tokio::io::stdout()))</code>.</li>
+          </ul>
+        </div>
+        <div class="lesson">
+          <div class="lesson-label">Lesson learned</div>
+          <p><strong>Automerge 0.5:</strong> Always import <code>use automerge::transaction::Transactable;</code> when using <code>AutoCommit</code>. The trait provides all mutation methods. <strong>rmcp 0.14:</strong> Derive macros from re-exported crates (<code>rmcp::schemars</code>) don't work &mdash; add the crate as a direct dep. Stdio MCP transport needs a <code>(stdin, stdout)</code> tuple, not just stdin.</p>
+        </div>
+        <div class="stats">
+          <span class="files">25 files</span>
+          <span class="added">+2,904</span>
+          <span class="removed">-83</span>
+        </div>
+      </div>
+
+      <!-- Commit: Documentation website -->
+      <div class="commit">
+        <div class="commit-header">
+          <a class="commit-hash" href="https://github.com/Ataraxy-Labs/weave/commit/7954e14">7954e14</a>
+          <span class="commit-date">Feb 6, 2026</span>
+        </div>
+        <div class="commit-title">Add documentation website</div>
+        <div class="commit-tags">
+          <span class="commit-tag" style="background: #60a5fa22; color: var(--blue);">docs</span>
+        </div>
+        <div class="commit-body">
+          <p>Single-page documentation site with dark monospace aesthetic, inspired by the <a href="https://github.com/Ataraxy-Labs/sem" style="color:var(--green)">sem</a> docs. Covered all three phases: merge driver algorithm, CRDT state model, and MCP server tools. Later split into multiple pages in <code>a5d130d</code>.</p>
+        </div>
+        <div class="stats">
+          <span class="files">1 file</span>
+          <span class="added">+799</span>
+          <span class="removed">-0</span>
+        </div>
+      </div>
+
+      <!-- Commit: Initial implementation -->
+      <div class="commit">
+        <div class="commit-header">
+          <a class="commit-hash" href="https://github.com/Ataraxy-Labs/weave/commit/bd5ad1e">bd5ad1e</a>
+          <span class="commit-date">Feb 6, 2026</span>
+        </div>
+        <div class="commit-title">Initial implementation: entity-level semantic merge driver for Git</div>
+        <div class="commit-tags">
+          <span class="commit-tag" style="background: #4ade8022; color: var(--green);">phase 1</span>
+          <span class="commit-tag" style="background: #4ade8022; color: var(--green);">major</span>
+        </div>
+        <div class="commit-body">
+          <p>The foundation &mdash; a Cargo workspace with three crates implementing entity-level semantic merge for Git.</p>
+          <p><strong>weave-core</strong> (the algorithm):</p>
+          <ul>
+            <li>Parse all three versions (base, ours, theirs) with <a href="https://github.com/Ataraxy-Labs/sem" style="color:var(--green)">sem-core</a> + tree-sitter</li>
+            <li>Split files into <code>Entity</code> and <code>Interstitial</code> regions</li>
+            <li>Match entities by stable ID (type + name + parent)</li>
+            <li>Resolve per-entity: only-ours, only-theirs, identical, or 3-way merge via <code>diffy</code></li>
+            <li>Reconstruct merged file preserving ours-side ordering</li>
+          </ul>
+          <p><strong>weave-driver</strong> (git integration):</p>
+          <ul>
+            <li>Binary that git calls with <code>%O %A %B %L %P</code> arguments</li>
+            <li>Reads three temp files, calls <code>entity_merge()</code>, writes result to <code>%A</code></li>
+            <li>Exit code: 0 = clean merge, 1 = has conflicts</li>
+          </ul>
+          <p><strong>weave-cli</strong> (user interface):</p>
+          <ul>
+            <li><code>weave setup</code> &mdash; configures <code>.gitattributes</code> and git merge driver</li>
+            <li><code>weave preview &lt;branch&gt;</code> &mdash; dry-run merge analysis</li>
+          </ul>
+          <p><strong>Key design decision:</strong> <code>sem-core</code>'s <code>entity.content</code> strips syntax like <code>export</code>, so we use region content (raw file lines by byte range) for merge output instead of entity content. This preserves the original source exactly.</p>
+        </div>
+        <div class="lesson">
+          <div class="lesson-label">Lesson learned</div>
+          <p><strong>sem-core entities vs regions:</strong> <code>entity.content</code> is the parsed/normalized body (strips keywords like <code>export</code>). For merge output, always use the raw file content by line range to preserve original syntax exactly. <strong>diffy:</strong> <code>diffy::merge()</code> works best for non-adjacent changes; overlapping changes within the same entity body still produce conflict markers.</p>
+        </div>
+        <div class="stats">
+          <span class="files">17 files</span>
+          <span class="added">+3,145</span>
+          <span class="removed">-0</span>
+        </div>
+      </div>
+
+    </section>
+
+    <footer>
+      <p>Built by <a href="https://ataraxy-labs.com">Ataraxy Labs</a></p>
+    </footer>
+  </div>
+</body>
+</html>
