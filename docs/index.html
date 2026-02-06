@@ -235,9 +235,9 @@
       <p style="font-size: 14px; color: var(--dim); margin-bottom: 24px; line-height: 1.7; max-width: 540px; margin-left: auto; margin-right: auto;">
         Entity-level semantic merge driver for Git. Understands functions, classes, and properties &mdash; so two agents editing different functions in the same file merge cleanly.
       </p>
-      <div class="install-box" onclick="copyCmd(this, 'cargo install --git https://github.com/Ataraxy-Labs/weave --path crates/weave-cli')" style="display: inline-block; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 10px 20px; font-size: 14px; color: var(--fg); cursor: pointer; position: relative;">
+      <div class="install-box" onclick="copyCmd(this, 'cargo install --git https://github.com/Ataraxy-Labs/weave weave-cli')" style="display: inline-block; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 10px 20px; font-size: 14px; color: var(--fg); cursor: pointer; position: relative;">
         <span class="copied" style="position: absolute; top: -28px; left: 50%; transform: translateX(-50%); font-size: 12px; color: var(--green); opacity: 0; transition: opacity 0.2s;">copied</span>
-        <span style="color: var(--dim);">$</span> cargo install --git https://github.com/Ataraxy-Labs/weave --path crates/weave-cli
+        <span style="color: var(--dim);">$</span> cargo install --git https://github.com/Ataraxy-Labs/weave weave-cli
       </div>
     </div>
 
@@ -731,8 +731,8 @@
         </div>
         <div class="terminal-body">
 <pre><span class="d"># Install</span>
-<span class="cmd">$ cargo install --git https://github.com/Ataraxy-Labs/weave --path crates/weave-cli</span>
-<span class="cmd">$ cargo install --git https://github.com/Ataraxy-Labs/weave --path crates/weave-driver</span>
+<span class="cmd">$ cargo install --git https://github.com/Ataraxy-Labs/weave weave-cli</span>
+<span class="cmd">$ cargo install --git https://github.com/Ataraxy-Labs/weave weave-driver</span>
 
 <span class="d"># Configure your repo</span>
 <span class="cmd">$ cd my-project</span>
@@ -766,7 +766,7 @@
         </div>
         <div class="terminal-body">
 <pre><span class="d"># Install the MCP server binary</span>
-<span class="cmd">$ cargo install --git https://github.com/Ataraxy-Labs/weave --path crates/weave-mcp</span>
+<span class="cmd">$ cargo install --git https://github.com/Ataraxy-Labs/weave weave-mcp</span>
 
 <span class="d"># Add to Claude Desktop config (~/.config/claude/claude_desktop_config.json)</span>
 <span class="d">{</span>
