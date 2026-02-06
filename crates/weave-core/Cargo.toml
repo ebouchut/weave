@@ -1,0 +1,12 @@
+[package]
+name = "weave-core"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+sem-core = { path = "../../../sem/crates/sem-core" }
+diffy = "0.4"
+thiserror = "2"
+
+[dev-dependencies]
+pretty_assertions = "1"

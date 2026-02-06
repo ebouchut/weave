@@ -1,0 +1,10 @@
+[package]
+name = "weave-cli"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+weave-core = { path = "../weave-core" }
+sem-core = { path = "../../../sem/crates/sem-core" }
+clap = { version = "4", features = ["derive"] }
+colored = "2"
