@@ -154,18 +154,48 @@ pub fn entity_merge_with_registry(
         theirs_change_map.insert(change.entity_id.clone(), change.change_type);
     }
 
+    // Detect renames using structural_hash (RefFilter / IntelliMerge-inspired).
+    // When one branch renames an entity, connect the old and new IDs so the merge
+    // treats it as the same entity rather than a delete+add.
+    let ours_rename_to_base = build_rename_map(&base_entities, &ours_entities);
+    let theirs_rename_to_base = build_rename_map(&base_entities, &theirs_entities);
+    // Reverse maps: base_id → renamed_id in that branch
+    let base_to_ours_rename: HashMap<String, String> = ours_rename_to_base
+        .iter()
+        .map(|(new, old)| (old.clone(), new.clone()))
+        .collect();
+    let base_to_theirs_rename: HashMap<String, String> = theirs_rename_to_base
+        .iter()
+        .map(|(new, old)| (old.clone(), new.clone()))
+        .collect();
+
     // Collect all entity IDs across all versions
     let mut all_entity_ids: Vec<String> = Vec::new();
     let mut seen: HashSet<String> = HashSet::new();
+    // Track renamed IDs so we don't process them twice
+    let mut skip_ids: HashSet<String> = HashSet::new();
+    // The "new" IDs from renames should be skipped — they'll be handled via the base ID
+    for new_id in ours_rename_to_base.keys() {
+        skip_ids.insert(new_id.clone());
+    }
+    for new_id in theirs_rename_to_base.keys() {
+        skip_ids.insert(new_id.clone());
+    }
 
     // Start with ours ordering (skeleton)
     for entity in &ours_entities {
+        if skip_ids.contains(&entity.id) {
+            continue;
+        }
         if seen.insert(entity.id.clone()) {
             all_entity_ids.push(entity.id.clone());
         }
     }
     // Add theirs-only entities
     for entity in &theirs_entities {
+        if skip_ids.contains(&entity.id) {
+            continue;
+        }
         if seen.insert(entity.id.clone()) {
             all_entity_ids.push(entity.id.clone());
         }
@@ -183,8 +213,11 @@ pub fn entity_merge_with_registry(
 
     for entity_id in &all_entity_ids {
         let in_base = base_entity_map.get(entity_id.as_str());
-        let in_ours = ours_entity_map.get(entity_id.as_str());
-        let in_theirs = theirs_entity_map.get(entity_id.as_str());
+        // Follow rename chains: if base entity was renamed in ours/theirs, use renamed version
+        let ours_id = base_to_ours_rename.get(entity_id.as_str()).map(|s| s.as_str()).unwrap_or(entity_id.as_str());
+        let theirs_id = base_to_theirs_rename.get(entity_id.as_str()).map(|s| s.as_str()).unwrap_or(entity_id.as_str());
+        let in_ours = ours_entity_map.get(ours_id).or_else(|| ours_entity_map.get(entity_id.as_str()));
+        let in_theirs = theirs_entity_map.get(theirs_id).or_else(|| theirs_entity_map.get(entity_id.as_str()));
 
         let ours_change = ours_change_map.get(entity_id);
         let theirs_change = theirs_change_map.get(entity_id);
@@ -206,7 +239,14 @@ pub fn entity_merge_with_registry(
             conflicts.push(c.clone());
         }
 
-        resolved_entities.insert(entity_id.clone(), resolution);
+        resolved_entities.insert(entity_id.clone(), resolution.clone());
+        // Also store under renamed IDs so reconstruct can find them
+        if let Some(ours_renamed_id) = base_to_ours_rename.get(entity_id.as_str()) {
+            resolved_entities.insert(ours_renamed_id.clone(), resolution.clone());
+        }
+        if let Some(theirs_renamed_id) = base_to_theirs_rename.get(entity_id.as_str()) {
+            resolved_entities.insert(theirs_renamed_id.clone(), resolution);
+        }
     }
 
     // Merge interstitial regions
@@ -714,6 +754,53 @@ fn line_level_fallback(base: &str, ours: &str, theirs: &str) -> MergeResult {
             }
         }
     }
+}
+
+/// Build a rename map from new_id → base_id using structural_hash matching.
+///
+/// Detects when an entity in the branch has the same structural_hash as an entity
+/// in base but a different ID — indicating it was renamed.
+fn build_rename_map(
+    base_entities: &[SemanticEntity],
+    branch_entities: &[SemanticEntity],
+) -> HashMap<String, String> {
+    let mut rename_map: HashMap<String, String> = HashMap::new();
+
+    // Build structural_hash → entity map for base
+    let mut base_by_structural: HashMap<&str, &SemanticEntity> = HashMap::new();
+    let base_ids: HashSet<&str> = base_entities.iter().map(|e| e.id.as_str()).collect();
+    for entity in base_entities {
+        if let Some(ref sh) = entity.structural_hash {
+            base_by_structural.insert(sh.as_str(), entity);
+        }
+    }
+
+    // Find branch entities that aren't in base by ID but match by structural_hash
+    let mut used_base_ids: HashSet<String> = HashSet::new();
+    for branch_entity in branch_entities {
+        // Skip entities that exist in base by ID (not renamed)
+        if base_ids.contains(branch_entity.id.as_str()) {
+            continue;
+        }
+
+        // Check if this branch entity matches a base entity by structural_hash
+        if let Some(ref sh) = branch_entity.structural_hash {
+            if let Some(base_entity) = base_by_structural.get(sh.as_str()) {
+                // Only if the base entity wasn't also found in branch by ID
+                // (prevents matching when both old and new exist)
+                if !used_base_ids.contains(&base_entity.id) {
+                    // Also verify the base entity isn't in the branch (by ID) — it was actually removed
+                    let base_id_in_branch = branch_entities.iter().any(|e| e.id == base_entity.id);
+                    if !base_id_in_branch {
+                        rename_map.insert(branch_entity.id.clone(), base_entity.id.clone());
+                        used_base_ids.insert(base_entity.id.clone());
+                    }
+                }
+            }
+        }
+    }
+
+    rename_map
 }
 
 /// Check if an entity type is a container that may benefit from inner entity merge.

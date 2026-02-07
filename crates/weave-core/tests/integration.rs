@@ -447,6 +447,52 @@ fn ts_class_one_adds_method_other_modifies_existing() {
 }
 
 // =============================================================================
+// Rename detection (RefFilter / IntelliMerge-inspired)
+// =============================================================================
+
+#[test]
+fn ts_one_renames_other_modifies_different_function() {
+    // Agent A renames greet → sayHello, Agent B modifies farewell
+    let base = r#"export function greet(name: string): string {
+    return `Hello, ${name}!`;
+}
+
+export function farewell(name: string): string {
+    return `Goodbye, ${name}!`;
+}
+"#;
+    // Agent A renames greet to sayHello (same body)
+    let ours = r#"export function sayHello(name: string): string {
+    return `Hello, ${name}!`;
+}
+
+export function farewell(name: string): string {
+    return `Goodbye, ${name}!`;
+}
+"#;
+    // Agent B modifies farewell
+    let theirs = r#"export function greet(name: string): string {
+    return `Hello, ${name}!`;
+}
+
+export function farewell(name: string): string {
+    console.log("farewell called");
+    return `Goodbye, ${name}! See you later.`;
+}
+"#;
+    let result = entity_merge(base, ours, theirs, "greetings.ts");
+    assert!(
+        result.is_clean(),
+        "Rename in one branch + modify in other should auto-resolve. Conflicts: {:?}",
+        result.conflicts,
+    );
+    // Should have the renamed function
+    assert!(result.content.contains("sayHello"), "Should have renamed function");
+    // Should have the modified farewell
+    assert!(result.content.contains("See you later"), "Should have modified farewell");
+}
+
+// =============================================================================
 // Edge cases
 // =============================================================================
 
