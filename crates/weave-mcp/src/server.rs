@@ -653,6 +653,95 @@ impl WeaveServer {
 
         Ok(CallToolResult::success(vec![Content::text("OK")]))
     }
+
+    #[tool(description = "Validate a merge for semantic risks: detect when auto-merged entities reference other entities that were also modified")]
+    async fn weave_validate_merge(
+        &self,
+        Parameters(params): Parameters<ValidateMergeParams>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
+        let ctx = self
+            .get_context(params.file_path.as_deref())
+            .await
+            .map_err(internal_err)?;
+
+        let merge_base = git::find_merge_base(&params.base_branch, &params.target_branch)
+            .map_err(|e| internal_err(e.to_string()))?;
+
+        let files = if let Some(ref fp) = params.file_path {
+            let (rel, _) = Self::resolve_file_path(&ctx.repo_root, fp);
+            vec![rel]
+        } else {
+            git::get_changed_files(&merge_base, &params.base_branch, &params.target_branch)
+                .map_err(|e| internal_err(e.to_string()))?
+        };
+
+        // Collect modified entities from both branches
+        let mut modified_entities = Vec::new();
+        for file in &files {
+            let base_content = git::git_show(&merge_base, file).unwrap_or_default();
+            let ours_content = git::git_show(&params.base_branch, file).unwrap_or_default();
+            let theirs_content = git::git_show(&params.target_branch, file).unwrap_or_default();
+
+            if let Some(plugin) = self.registry.get_plugin(file) {
+                let base_entities = plugin.extract_entities(&base_content, file);
+                let ours_entities = plugin.extract_entities(&ours_content, file);
+                let theirs_entities = plugin.extract_entities(&theirs_content, file);
+
+                // Find entities modified in ours or theirs vs base
+                for entity in ours_entities.iter().chain(theirs_entities.iter()) {
+                    let base_match = base_entities.iter().find(|b| b.name == entity.name);
+                    let is_modified = match base_match {
+                        Some(b) => b.content_hash != entity.content_hash,
+                        None => true, // new entity
+                    };
+                    if is_modified {
+                        modified_entities.push(weave_core::ModifiedEntity {
+                            name: entity.name.clone(),
+                            file_path: file.clone(),
+                        });
+                    }
+                }
+            }
+        }
+
+        // Deduplicate
+        modified_entities.sort_by(|a, b| (&a.file_path, &a.name).cmp(&(&b.file_path, &b.name)));
+        modified_entities.dedup_by(|a, b| a.file_path == b.file_path && a.name == b.name);
+
+        let all_files = Self::find_supported_files(&ctx.repo_root, &self.registry);
+        let warnings = weave_core::validate_merge(
+            &ctx.repo_root,
+            &all_files,
+            &modified_entities,
+            &self.registry,
+        );
+
+        let result: Vec<serde_json::Value> = warnings
+            .iter()
+            .map(|w| {
+                serde_json::json!({
+                    "entity": w.entity_name,
+                    "entity_type": w.entity_type,
+                    "file": w.file_path,
+                    "warning": w.to_string(),
+                    "related": w.related.iter().map(|r| serde_json::json!({
+                        "name": r.name,
+                        "type": r.entity_type,
+                        "file": r.file_path,
+                    })).collect::<Vec<_>>(),
+                })
+            })
+            .collect();
+
+        Ok(CallToolResult::success(vec![Content::text(
+            serde_json::to_string_pretty(&serde_json::json!({
+                "modified_entities": modified_entities.len(),
+                "warnings": result.len(),
+                "details": result,
+            }))
+            .unwrap_or_default(),
+        )]))
+    }
 }
 
 #[tool_handler]

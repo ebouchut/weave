@@ -89,3 +89,13 @@ pub struct ImpactAnalysisParams {
     #[schemars(description = "Name of the entity to analyze impact for")]
     pub entity_name: String,
 }
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct ValidateMergeParams {
+    #[schemars(description = "Base branch (e.g. 'main')")]
+    pub base_branch: String,
+    #[schemars(description = "Target branch to validate merge of")]
+    pub target_branch: String,
+    #[schemars(description = "Optional: validate only this file")]
+    pub file_path: Option<String>,
+}
