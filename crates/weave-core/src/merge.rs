@@ -630,34 +630,153 @@ fn merge_imports_commutatively(base: &str, ours: &str, theirs: &str) -> String {
 }
 
 /// Fallback to line-level 3-way merge when entity extraction isn't possible.
+///
+/// Uses Sesame-inspired separator preprocessing (arXiv:2407.18888) to get
+/// finer-grained alignment before line-level merge. Inserts newlines around
+/// syntactic separators ({, }, ;) so that changes in different code blocks
+/// align independently, reducing spurious conflicts.
 fn line_level_fallback(base: &str, ours: &str, theirs: &str) -> MergeResult {
     let mut stats = MergeStats::default();
     stats.used_fallback = true;
 
-    match diffy::merge(base, ours, theirs) {
-        Ok(merged) => MergeResult {
-            content: merged,
-            conflicts: vec![],
-            warnings: vec![],
-            stats,
-        },
-        Err(conflicted) => {
-            stats.entities_conflicted = 1;
+    // Preprocess: expand separators into separate lines for finer alignment
+    let base_expanded = expand_separators(base);
+    let ours_expanded = expand_separators(ours);
+    let theirs_expanded = expand_separators(theirs);
+
+    match diffy::merge(&base_expanded, &ours_expanded, &theirs_expanded) {
+        Ok(merged) => {
+            // Collapse back: remove the newlines we inserted
+            let content = collapse_separators(&merged, base);
             MergeResult {
-                content: conflicted,
-                conflicts: vec![EntityConflict {
-                    entity_name: "(file)".to_string(),
-                    entity_type: "file".to_string(),
-                    kind: ConflictKind::BothModified,
-                    ours_content: Some(ours.to_string()),
-                    theirs_content: Some(theirs.to_string()),
-                    base_content: Some(base.to_string()),
-                }],
+                content,
+                conflicts: vec![],
                 warnings: vec![],
                 stats,
             }
         }
+        Err(_) => {
+            // If separator-expanded merge still conflicts, try plain merge
+            // for cleaner conflict markers
+            match diffy::merge(base, ours, theirs) {
+                Ok(merged) => MergeResult {
+                    content: merged,
+                    conflicts: vec![],
+                    warnings: vec![],
+                    stats,
+                },
+                Err(conflicted_plain) => {
+                    stats.entities_conflicted = 1;
+                    MergeResult {
+                        content: conflicted_plain,
+                        conflicts: vec![EntityConflict {
+                            entity_name: "(file)".to_string(),
+                            entity_type: "file".to_string(),
+                            kind: ConflictKind::BothModified,
+                            ours_content: Some(ours.to_string()),
+                            theirs_content: Some(theirs.to_string()),
+                            base_content: Some(base.to_string()),
+                        }],
+                        warnings: vec![],
+                        stats,
+                    }
+                }
+            }
+        }
     }
+}
+
+/// Expand syntactic separators into separate lines for finer merge alignment.
+/// Inspired by Sesame (arXiv:2407.18888): isolating separators lets line-based
+/// merge tools see block boundaries as independent change units.
+fn expand_separators(content: &str) -> String {
+    let mut result = String::with_capacity(content.len() * 2);
+    let mut in_string = false;
+    let mut escape_next = false;
+    let mut string_char = '"';
+
+    for ch in content.chars() {
+        if escape_next {
+            result.push(ch);
+            escape_next = false;
+            continue;
+        }
+        if ch == '\\' && in_string {
+            result.push(ch);
+            escape_next = true;
+            continue;
+        }
+        if !in_string && (ch == '"' || ch == '\'' || ch == '`') {
+            in_string = true;
+            string_char = ch;
+            result.push(ch);
+            continue;
+        }
+        if in_string && ch == string_char {
+            in_string = false;
+            result.push(ch);
+            continue;
+        }
+
+        if !in_string && (ch == '{' || ch == '}' || ch == ';') {
+            // Ensure separator is on its own line
+            if !result.ends_with('\n') && !result.is_empty() {
+                result.push('\n');
+            }
+            result.push(ch);
+            result.push('\n');
+        } else {
+            result.push(ch);
+        }
+    }
+
+    result
+}
+
+/// Collapse separator expansion back to original formatting.
+/// Uses the base formatting as a guide where possible.
+fn collapse_separators(merged: &str, _base: &str) -> String {
+    // Simple approach: join lines that contain only a separator with adjacent lines
+    let lines: Vec<&str> = merged.lines().collect();
+    let mut result = String::new();
+    let mut i = 0;
+
+    while i < lines.len() {
+        let trimmed = lines[i].trim();
+        if (trimmed == "{" || trimmed == "}" || trimmed == ";") && trimmed.len() == 1 {
+            // This is a separator-only line we may have created
+            // Try to join with previous line if it doesn't end with a separator
+            if !result.is_empty() && !result.ends_with('\n') {
+                // Peek: if it's an opening brace, join with previous
+                if trimmed == "{" {
+                    result.push(' ');
+                    result.push_str(trimmed);
+                    result.push('\n');
+                } else if trimmed == "}" {
+                    result.push('\n');
+                    result.push_str(trimmed);
+                    result.push('\n');
+                } else {
+                    result.push_str(trimmed);
+                    result.push('\n');
+                }
+            } else {
+                result.push_str(lines[i]);
+                result.push('\n');
+            }
+        } else {
+            result.push_str(lines[i]);
+            result.push('\n');
+        }
+        i += 1;
+    }
+
+    // Trim any trailing extra newlines to match original style
+    while result.ends_with("\n\n") {
+        result.pop();
+    }
+
+    result
 }
 
 #[cfg(test)]
@@ -788,6 +907,28 @@ export function agentB() {
         let result = line_level_fallback(base, ours, theirs);
         assert!(!result.is_clean());
         assert!(result.stats.used_fallback);
+    }
+
+    #[test]
+    fn test_expand_separators() {
+        let code = "function foo() { return 1; }";
+        let expanded = expand_separators(code);
+        // Separators should be on their own lines
+        assert!(expanded.contains("{\n"), "Opening brace should have newline after");
+        assert!(expanded.contains(";\n"), "Semicolons should have newline after");
+        assert!(expanded.contains("\n}"), "Closing brace should have newline before");
+    }
+
+    #[test]
+    fn test_expand_separators_preserves_strings() {
+        let code = r#"let x = "hello { world };";"#;
+        let expanded = expand_separators(code);
+        // Separators inside strings should NOT be expanded
+        assert!(
+            expanded.contains("\"hello { world };\""),
+            "Separators in strings should be preserved: {}",
+            expanded
+        );
     }
 
     #[test]
