@@ -215,7 +215,7 @@ impl WeaveServer {
         )]))
     }
 
-    #[tool(description = "Claim an entity before editing it. Advisory lock that signals to other agents you're working on this entity.")]
+    #[tool(description = "Claim an entity before editing it. Advisory lock that signals to other agents you're working on this entity. Returns predictive warnings if related entities are claimed by other agents.")]
     async fn weave_claim_entity(
         &self,
         Parameters(params): Parameters<ClaimEntityParams>,
@@ -253,8 +253,70 @@ impl WeaveServer {
 
         let _ = state.save();
 
+        // Predictive conflict detection: check if any entity in the
+        // dependency chain is claimed by another agent
+        let mut dep_warnings: Vec<serde_json::Value> = Vec::new();
+        let file_paths = Self::find_supported_files(&ctx.repo_root, &self.registry);
+        let graph = EntityGraph::build(&ctx.repo_root, &file_paths, &self.registry);
+
+        // Find graph entity matching our claimed entity
+        if let Some(graph_entity) = graph
+            .entities
+            .values()
+            .find(|e| e.name == params.entity_name && e.file_path == rel_path)
+        {
+            // Check dependencies (what we call)
+            let deps = graph.get_dependencies(&graph_entity.id);
+            for dep in &deps {
+                if let Ok(status) = get_entity_status(&state, &dep.id) {
+                    if let Some(ref claimed_by) = status.claimed_by {
+                        if claimed_by != &params.agent_id {
+                            dep_warnings.push(serde_json::json!({
+                                "type": "dependency_claimed",
+                                "message": format!(
+                                    "{} `{}` depends on {} `{}` which is claimed by agent `{}`",
+                                    "function", params.entity_name,
+                                    dep.entity_type, dep.name, claimed_by
+                                ),
+                                "entity": dep.name,
+                                "file": dep.file_path,
+                                "claimed_by": claimed_by,
+                            }));
+                        }
+                    }
+                }
+            }
+
+            // Check dependents (who calls us)
+            let dependents = graph.get_dependents(&graph_entity.id);
+            for dep in &dependents {
+                if let Ok(status) = get_entity_status(&state, &dep.id) {
+                    if let Some(ref claimed_by) = status.claimed_by {
+                        if claimed_by != &params.agent_id {
+                            dep_warnings.push(serde_json::json!({
+                                "type": "dependent_claimed",
+                                "message": format!(
+                                    "{} `{}` is used by {} `{}` which is claimed by agent `{}`",
+                                    "function", params.entity_name,
+                                    dep.entity_type, dep.name, claimed_by
+                                ),
+                                "entity": dep.name,
+                                "file": dep.file_path,
+                                "claimed_by": claimed_by,
+                            }));
+                        }
+                    }
+                }
+            }
+        }
+
+        let response = serde_json::json!({
+            "result": serde_json::to_value(&result).unwrap_or_default(),
+            "dependency_warnings": dep_warnings,
+        });
+
         Ok(CallToolResult::success(vec![Content::text(
-            serde_json::to_string(&result).unwrap_or_default(),
+            serde_json::to_string_pretty(&response).unwrap_or_default(),
         )]))
     }
 
