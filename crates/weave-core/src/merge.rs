@@ -8,6 +8,7 @@ use sem_core::parser::registry::ParserRegistry;
 
 use crate::conflict::{ConflictKind, EntityConflict, MergeStats};
 use crate::region::{extract_regions, EntityRegion, FileRegion};
+use crate::validate::SemanticWarning;
 use crate::reconstruct::reconstruct;
 
 /// Result of a merge operation.
@@ -15,6 +16,7 @@ use crate::reconstruct::reconstruct;
 pub struct MergeResult {
     pub content: String,
     pub conflicts: Vec<EntityConflict>,
+    pub warnings: Vec<SemanticWarning>,
     pub stats: MergeStats,
 }
 
@@ -63,6 +65,7 @@ pub fn entity_merge_with_registry(
         return MergeResult {
             content: ours.to_string(),
             conflicts: vec![],
+            warnings: vec![],
             stats: MergeStats::default(),
         };
     }
@@ -72,6 +75,7 @@ pub fn entity_merge_with_registry(
         return MergeResult {
             content: theirs.to_string(),
             conflicts: vec![],
+            warnings: vec![],
             stats: MergeStats {
                 entities_theirs_only: 1,
                 ..Default::default()
@@ -84,6 +88,7 @@ pub fn entity_merge_with_registry(
         return MergeResult {
             content: ours.to_string(),
             conflicts: vec![],
+            warnings: vec![],
             stats: MergeStats {
                 entities_ours_only: 1,
                 ..Default::default()
@@ -220,6 +225,7 @@ pub fn entity_merge_with_registry(
     MergeResult {
         content,
         conflicts,
+        warnings: vec![],
         stats,
     }
 }
@@ -632,6 +638,7 @@ fn line_level_fallback(base: &str, ours: &str, theirs: &str) -> MergeResult {
         Ok(merged) => MergeResult {
             content: merged,
             conflicts: vec![],
+            warnings: vec![],
             stats,
         },
         Err(conflicted) => {
@@ -646,6 +653,7 @@ fn line_level_fallback(base: &str, ours: &str, theirs: &str) -> MergeResult {
                     theirs_content: Some(theirs.to_string()),
                     base_content: Some(base.to_string()),
                 }],
+                warnings: vec![],
                 stats,
             }
         }

@@ -72,6 +72,8 @@ pub struct MergeStats {
     pub entities_added_theirs: usize,
     pub entities_deleted: usize,
     pub used_fallback: bool,
+    /// Entities that were auto-merged but reference other modified entities.
+    pub semantic_warnings: usize,
 }
 
 impl MergeStats {
@@ -103,6 +105,9 @@ impl fmt::Display for MergeStats {
         }
         if self.entities_conflicted > 0 {
             write!(f, ", CONFLICTS: {}", self.entities_conflicted)?;
+        }
+        if self.semantic_warnings > 0 {
+            write!(f, ", semantic-warnings: {}", self.semantic_warnings)?;
         }
         if self.used_fallback {
             write!(f, " (line-level fallback)")?;
