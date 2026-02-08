@@ -6,26 +6,63 @@ use weave_core::entity_merge;
 fn main() {
     env_logger::init();
 
-    let args: Vec<String> = std::env::args().collect();
+    let raw_args: Vec<String> = std::env::args().collect();
+
+    // Parse optional flags before positional args
+    // Supported flags: -o <path> / --output <path>
+    let mut output_override: Option<String> = None;
+    let mut positional: Vec<String> = Vec::new();
+    let mut i = 1;
+    while i < raw_args.len() {
+        match raw_args[i].as_str() {
+            "-o" | "--output" => {
+                if i + 1 < raw_args.len() {
+                    output_override = Some(raw_args[i + 1].clone());
+                    i += 2;
+                } else {
+                    eprintln!("weave: -o/--output requires a path argument");
+                    process::exit(2);
+                }
+            }
+            "-l" | "--marker-length" => {
+                // Accept and skip (we use our own markers)
+                i += 2;
+            }
+            "-p" | "--path" => {
+                if i + 1 < raw_args.len() {
+                    // Will be picked up from positional or used directly
+                    positional.push(raw_args[i + 1].clone());
+                    i += 2;
+                } else {
+                    i += 1;
+                }
+            }
+            _ => {
+                positional.push(raw_args[i].clone());
+                i += 1;
+            }
+        }
+    }
 
     // Git calls: weave-driver %O %A %B %L %P
+    // jj calls:  weave-driver $base $left $right -o $output -l $marker_length -p $path
     // %O = ancestor (base), %A = current (ours), %B = other (theirs)
     // %L = conflict marker size, %P = file path
-    if args.len() < 4 {
+    if positional.len() < 3 {
         eprintln!("Usage: weave-driver <base> <ours> <theirs> [marker-size] [file-path]");
-        eprintln!("  Typically invoked by git as a merge driver.");
+        eprintln!("       weave-driver <base> <ours> <theirs> -o <output> [-l <marker-length>] [-p <path>]");
+        eprintln!("  Invoked by git as a merge driver, or by jj as a merge tool.");
         process::exit(2);
     }
 
-    let base_path = &args[1];
-    let ours_path = &args[2];
-    let theirs_path = &args[3];
-    // args[4] is marker size (unused, we use our own markers)
-    let file_path = if args.len() > 5 {
-        args[5].clone()
-    } else if args.len() > 4 {
-        // Sometimes %P comes as 4th positional
-        args[4].clone()
+    let base_path = &positional[0];
+    let ours_path = &positional[1];
+    let theirs_path = &positional[2];
+    // positional[3] is marker size (unused, we use our own markers)
+    let file_path = if positional.len() > 4 {
+        positional[4].clone()
+    } else if positional.len() > 3 {
+        positional[3].clone()
     } else {
         ours_path.clone()
     };
@@ -62,9 +99,10 @@ fn main() {
     // Run entity merge
     let result = entity_merge(&base, &ours, &theirs, &file_path);
 
-    // Write result to ours path (git convention: merge driver writes to %A)
-    if let Err(e) = fs::write(ours_path, &result.content) {
-        eprintln!("weave: failed to write result to '{}': {}", ours_path, e);
+    // Write result: to -o path if specified (jj), else to ours path (git convention: %A)
+    let write_path = output_override.as_deref().unwrap_or(ours_path);
+    if let Err(e) = fs::write(write_path, &result.content) {
+        eprintln!("weave: failed to write result to '{}': {}", write_path, e);
         process::exit(2);
     }
 
