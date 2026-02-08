@@ -86,6 +86,37 @@
 
     <section style="border-top: none; padding-top: 12px;">
 
+      <!-- Commit: Decorator-aware merge, Java/C support, 24-scenario benchmark -->
+      <div class="commit">
+        <div class="commit-header">
+          <span class="commit-date">Feb 7, 2026</span>
+        </div>
+        <div class="commit-title">Add decorator-aware merge, Java &amp; C language support, expand benchmark to 24 scenarios</div>
+        <div class="commit-tags">
+          <span class="commit-tag" style="background: #4ade8022; color: var(--green);">feature</span>
+          <span class="commit-tag" style="background: #fb923c22; color: var(--orange);">perf</span>
+          <span class="commit-tag" style="background: #a78bfa22; color: var(--purple);">research</span>
+        </div>
+        <div class="commit-body">
+          <p>Three major improvements:</p>
+          <ul>
+            <li><strong>Decorator-aware merge</strong>: commutative merge for decorators/annotations. When both agents add different decorators to the same function (e.g. <code>@cache</code> + <code>@deprecated</code>), weave merges them cleanly. Works for Python decorators, Java annotations, and TypeScript decorators — at both entity and inner-entity (class member) levels.</li>
+            <li><strong>Java &amp; C language support</strong>: sem-core now extracts entities from Java (classes, methods, interfaces, enums, fields, constructors) and C (functions, structs, enums, unions, typedefs). 9 supported languages total.</li>
+            <li><strong>Inner entity merge improvements</strong>: single-line members (fields, variants) no longer get blank line separators. <code>@</code>-prefixed decorators bundle with their member in inner merge. Single-member containers now go through inner merge (needed for decorator merge on single-method classes).</li>
+          </ul>
+          <p><strong>Benchmark: weave 24/24 (100%) vs git 11/24 (46%)</strong>. 8 new scenarios: Python decorators, decorator+body changes, TS class decorators, TS interface fields, Rust enum variants, Java methods, Java annotations, C functions. All resolve cleanly.</p>
+          <div class="stats">
+            <span class="added">+500</span>
+            <span class="removed">-20</span>
+            <span class="files">8 files (merge.rs, bench.rs, integration.rs, sem-core)</span>
+          </div>
+        </div>
+        <div class="lesson">
+          <div class="lesson-label">Key insight</div>
+          <p>Decorators and annotations are semantically unordered, like imports — they can be merged commutatively. The <code>split_decorators()</code> approach cleanly separates decorator concerns from body concerns, allowing independent merge strategies. Combined with the inner entity merge for class members, this handles the real-world pattern where one agent adds <code>@Injectable</code> while another adds <code>@Deprecated</code> to the same method.</p>
+        </div>
+      </div>
+
       <!-- Commit: Confidence scoring, weave_diff, parse validation, whitespace-aware merge -->
       <div class="commit">
         <div class="commit-header">

@@ -365,7 +365,22 @@ fn resolve_entity(
                                 })
                             }
                             None => {
-                                // Before giving up, try inner entity merge for container types
+                                // Strategy 1: decorator/annotation-aware merge
+                                // Decorators are unordered annotations — merge them commutatively
+                                if let Some(merged) = try_decorator_aware_merge(&base_rc, &ours_rc, &theirs_rc) {
+                                    stats.entities_both_changed_merged += 1;
+                                    stats.resolved_via_diffy += 1;
+                                    return ResolvedEntity::Clean(EntityRegion {
+                                        entity_id: ours.id.clone(),
+                                        entity_name: ours.name.clone(),
+                                        entity_type: ours.entity_type.clone(),
+                                        content: merged,
+                                        start_line: ours.start_line,
+                                        end_line: ours.end_line,
+                                    });
+                                }
+
+                                // Strategy 2: inner entity merge for container types
                                 // (LastMerge insight: class members are unordered children)
                                 if is_container_entity_type(&ours.entity_type) {
                                     if let Some(merged) = try_inner_entity_merge(&base_rc, &ours_rc, &theirs_rc) {
@@ -532,6 +547,111 @@ fn is_whitespace_only_diff(a: &str, b: &str) -> bool {
     let a_normalized: Vec<&str> = a.lines().map(|l| l.trim()).filter(|l| !l.is_empty()).collect();
     let b_normalized: Vec<&str> = b.lines().map(|l| l.trim()).filter(|l| !l.is_empty()).collect();
     a_normalized == b_normalized
+}
+
+/// Check if a line is a decorator or annotation.
+/// Covers Python (@decorator), Java/TS (@Annotation), and comment-style annotations.
+fn is_decorator_line(line: &str) -> bool {
+    let trimmed = line.trim();
+    trimmed.starts_with('@')
+        && !trimmed.starts_with("@param")
+        && !trimmed.starts_with("@return")
+        && !trimmed.starts_with("@type")
+        && !trimmed.starts_with("@see")
+}
+
+/// Split content into (decorators, body) where decorators are leading @-prefixed lines.
+fn split_decorators(content: &str) -> (Vec<&str>, &str) {
+    let mut decorator_end = 0;
+    let mut byte_offset = 0;
+    for line in content.lines() {
+        if is_decorator_line(line) || line.trim().is_empty() {
+            decorator_end += 1;
+            byte_offset += line.len() + 1; // +1 for newline
+        } else {
+            break;
+        }
+    }
+    // Trim trailing empty lines from decorator section
+    let lines: Vec<&str> = content.lines().collect();
+    while decorator_end > 0 && lines.get(decorator_end - 1).map_or(false, |l| l.trim().is_empty()) {
+        byte_offset -= lines[decorator_end - 1].len() + 1;
+        decorator_end -= 1;
+    }
+    let decorators: Vec<&str> = lines[..decorator_end]
+        .iter()
+        .filter(|l| is_decorator_line(l))
+        .copied()
+        .collect();
+    let body = &content[byte_offset.min(content.len())..];
+    (decorators, body)
+}
+
+/// Try decorator-aware merge: when both sides add different decorators/annotations,
+/// merge them commutatively (like imports). Also try merging the bodies separately.
+///
+/// This handles the common pattern where one agent adds @cache and another adds @deprecated
+/// to the same function — they should both be preserved.
+fn try_decorator_aware_merge(base: &str, ours: &str, theirs: &str) -> Option<String> {
+    let (base_decorators, base_body) = split_decorators(base);
+    let (ours_decorators, ours_body) = split_decorators(ours);
+    let (theirs_decorators, theirs_body) = split_decorators(theirs);
+
+    // Only useful if at least one side has decorators
+    if ours_decorators.is_empty() && theirs_decorators.is_empty() {
+        return None;
+    }
+
+    // Merge bodies using diffy (or take unchanged side)
+    let merged_body = if base_body == ours_body && base_body == theirs_body {
+        base_body.to_string()
+    } else if base_body == ours_body {
+        theirs_body.to_string()
+    } else if base_body == theirs_body {
+        ours_body.to_string()
+    } else {
+        // Both changed body — try diffy on just the body
+        diffy_merge(base_body, ours_body, theirs_body)?
+    };
+
+    // Merge decorators commutatively (set union)
+    let base_set: HashSet<&str> = base_decorators.iter().copied().collect();
+    let ours_set: HashSet<&str> = ours_decorators.iter().copied().collect();
+    let theirs_set: HashSet<&str> = theirs_decorators.iter().copied().collect();
+
+    // Deletions
+    let ours_deleted: HashSet<&str> = base_set.difference(&ours_set).copied().collect();
+    let theirs_deleted: HashSet<&str> = base_set.difference(&theirs_set).copied().collect();
+
+    // Start with base decorators, remove deletions
+    let mut merged_decorators: Vec<&str> = base_decorators
+        .iter()
+        .filter(|d| !ours_deleted.contains(**d) && !theirs_deleted.contains(**d))
+        .copied()
+        .collect();
+
+    // Add new decorators from ours (not in base)
+    for d in &ours_decorators {
+        if !base_set.contains(d) && !merged_decorators.contains(d) {
+            merged_decorators.push(d);
+        }
+    }
+    // Add new decorators from theirs (not in base, not already added)
+    for d in &theirs_decorators {
+        if !base_set.contains(d) && !merged_decorators.contains(d) {
+            merged_decorators.push(d);
+        }
+    }
+
+    // Reconstruct
+    let mut result = String::new();
+    for d in &merged_decorators {
+        result.push_str(d);
+        result.push('\n');
+    }
+    result.push_str(&merged_body);
+
+    Some(result)
 }
 
 /// Try 3-way merge on text using diffy. Returns None if there are conflicts.
@@ -917,8 +1037,9 @@ fn try_inner_entity_merge(base: &str, ours: &str, theirs: &str) -> Option<String
     let ours_chunks = extract_member_chunks(ours)?;
     let theirs_chunks = extract_member_chunks(theirs)?;
 
-    // Need at least 2 members to benefit from inner merge
-    if base_chunks.len() < 2 && ours_chunks.len() < 2 && theirs_chunks.len() < 2 {
+    // Need at least 1 member to attempt inner merge
+    // (Even single-member containers benefit from decorator-aware merge)
+    if base_chunks.is_empty() && ours_chunks.is_empty() && theirs_chunks.is_empty() {
         return None;
     }
 
@@ -977,12 +1098,14 @@ fn try_inner_entity_merge(base: &str, ours: &str, theirs: &str) -> Option<String
                     merged_members.push(o.to_string());
                 } else {
                     // Both changed differently — try diffy on this member
-                    match diffy_merge(b, o, t) {
-                        Some(merged) => merged_members.push(merged),
-                        None => {
-                            has_conflict = true;
-                            break;
-                        }
+                    if let Some(merged) = diffy_merge(b, o, t) {
+                        merged_members.push(merged);
+                    } else if let Some(merged) = try_decorator_aware_merge(b, o, t) {
+                        // Try decorator-aware merge on the member
+                        merged_members.push(merged);
+                    } else {
+                        has_conflict = true;
+                        break;
                     }
                 }
             }
@@ -1043,13 +1166,16 @@ fn try_inner_entity_merge(base: &str, ours: &str, theirs: &str) -> Option<String
         result.push('\n');
     }
 
+    // Detect if members are single-line (fields, variants) vs multi-line (methods)
+    let has_multiline_members = merged_members.iter().any(|m| m.contains('\n'));
+
     for (i, member) in merged_members.iter().enumerate() {
         result.push_str(member);
         if !member.ends_with('\n') {
             result.push('\n');
         }
-        // Add blank line between members (but not after last)
-        if i < merged_members.len() - 1 && !member.ends_with("\n\n") {
+        // Add blank line between multi-line members (methods) but not single-line (fields, variants)
+        if i < merged_members.len() - 1 && has_multiline_members && !member.ends_with("\n\n") {
             result.push('\n');
         }
     }
@@ -1139,12 +1265,13 @@ fn extract_member_chunks(content: &str) -> Option<Vec<MemberChunk>> {
         let indent = line.len() - line.trim_start().len();
 
         // Is this a new member declaration at the member indent level?
-        // Exclude closing braces, comments, and decorators
+        // Exclude closing braces, comments, and decorators/annotations
         if indent == member_indent
             && !trimmed.starts_with("//")
             && !trimmed.starts_with("/*")
             && !trimmed.starts_with("*")
             && !trimmed.starts_with("#")
+            && !trimmed.starts_with("@")
             && trimmed != "}"
             && trimmed != "};"
             && trimmed != ","
@@ -1740,5 +1867,124 @@ export function agentB() {
             "return 1;\n",
             "return 1;\nconsole.log('x');\n"
         ));
+    }
+
+    #[test]
+    fn test_ts_interface_both_add_different_fields() {
+        let base = "interface Config {\n    name: string;\n}\n";
+        let ours = "interface Config {\n    name: string;\n    age: number;\n}\n";
+        let theirs = "interface Config {\n    name: string;\n    email: string;\n}\n";
+        let result = entity_merge(base, ours, theirs, "test.ts");
+        eprintln!("TS interface: clean={}, conflicts={:?}", result.is_clean(), result.conflicts);
+        eprintln!("Content: {:?}", result.content);
+        assert!(
+            result.is_clean(),
+            "Both adding different fields to TS interface should merge. Conflicts: {:?}",
+            result.conflicts,
+        );
+        assert!(result.content.contains("age"));
+        assert!(result.content.contains("email"));
+    }
+
+    #[test]
+    fn test_rust_enum_both_add_different_variants() {
+        let base = "enum Color {\n    Red,\n    Blue,\n}\n";
+        let ours = "enum Color {\n    Red,\n    Blue,\n    Green,\n}\n";
+        let theirs = "enum Color {\n    Red,\n    Blue,\n    Yellow,\n}\n";
+        let result = entity_merge(base, ours, theirs, "test.rs");
+        eprintln!("Rust enum: clean={}, conflicts={:?}", result.is_clean(), result.conflicts);
+        eprintln!("Content: {:?}", result.content);
+        assert!(
+            result.is_clean(),
+            "Both adding different enum variants should merge. Conflicts: {:?}",
+            result.conflicts,
+        );
+        assert!(result.content.contains("Green"));
+        assert!(result.content.contains("Yellow"));
+    }
+
+    #[test]
+    fn test_python_both_add_different_decorators() {
+        // Both add different decorators to the same function
+        let base = "def foo():\n    return 1\n\ndef bar():\n    return 2\n";
+        let ours = "@cache\ndef foo():\n    return 1\n\ndef bar():\n    return 2\n";
+        let theirs = "@deprecated\ndef foo():\n    return 1\n\ndef bar():\n    return 2\n";
+        let result = entity_merge(base, ours, theirs, "test.py");
+        assert!(
+            result.is_clean(),
+            "Both adding different decorators should merge. Conflicts: {:?}",
+            result.conflicts,
+        );
+        assert!(result.content.contains("@cache"));
+        assert!(result.content.contains("@deprecated"));
+        assert!(result.content.contains("def foo()"));
+    }
+
+    #[test]
+    fn test_decorator_plus_body_change() {
+        // One adds decorator, other modifies body — should merge both
+        let base = "def foo():\n    return 1\n";
+        let ours = "@cache\ndef foo():\n    return 1\n";
+        let theirs = "def foo():\n    return 42\n";
+        let result = entity_merge(base, ours, theirs, "test.py");
+        assert!(
+            result.is_clean(),
+            "Decorator + body change should merge. Conflicts: {:?}",
+            result.conflicts,
+        );
+        assert!(result.content.contains("@cache"));
+        assert!(result.content.contains("return 42"));
+    }
+
+    #[test]
+    fn test_ts_class_decorator_merge() {
+        // TypeScript decorators on class methods — both add different decorators
+        let base = "class Foo {\n    bar() {\n        return 1;\n    }\n}\n";
+        let ours = "class Foo {\n    @Injectable()\n    bar() {\n        return 1;\n    }\n}\n";
+        let theirs = "class Foo {\n    @Deprecated()\n    bar() {\n        return 1;\n    }\n}\n";
+        let result = entity_merge(base, ours, theirs, "test.ts");
+        assert!(
+            result.is_clean(),
+            "Both adding different decorators to same method should merge. Conflicts: {:?}",
+            result.conflicts,
+        );
+        assert!(result.content.contains("@Injectable()"));
+        assert!(result.content.contains("@Deprecated()"));
+        assert!(result.content.contains("bar()"));
+    }
+
+    #[test]
+    fn test_non_adjacent_intra_function_changes() {
+        let base = r#"export function process(data: any) {
+    const validated = validate(data);
+    const transformed = transform(validated);
+    const saved = save(transformed);
+    return saved;
+}
+"#;
+        let ours = r#"export function process(data: any) {
+    const validated = validate(data);
+    const transformed = transform(validated);
+    const saved = save(transformed);
+    console.log("saved", saved);
+    return saved;
+}
+"#;
+        let theirs = r#"export function process(data: any) {
+    console.log("input", data);
+    const validated = validate(data);
+    const transformed = transform(validated);
+    const saved = save(transformed);
+    return saved;
+}
+"#;
+        let result = entity_merge(base, ours, theirs, "test.ts");
+        assert!(
+            result.is_clean(),
+            "Non-adjacent changes within same function should merge via diffy. Conflicts: {:?}",
+            result.conflicts,
+        );
+        assert!(result.content.contains("console.log(\"saved\""));
+        assert!(result.content.contains("console.log(\"input\""));
     }
 }

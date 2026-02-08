@@ -261,13 +261,61 @@
               <td class="lose">CONFLICT</td>
               <td style="color:var(--green);font-weight:600">WEAVE WINS</td>
             </tr>
+            <tr>
+              <td>Python: both add different decorators</td>
+              <td class="win">clean (645us)</td>
+              <td class="lose">CONFLICT</td>
+              <td style="color:var(--green);font-weight:600">WEAVE WINS</td>
+            </tr>
+            <tr>
+              <td>Decorator + body change</td>
+              <td class="win">clean (644us)</td>
+              <td class="win">clean (21us)</td>
+              <td>both clean</td>
+            </tr>
+            <tr>
+              <td>TS: class method decorators</td>
+              <td class="win">clean (933us)</td>
+              <td class="lose">CONFLICT</td>
+              <td style="color:var(--green);font-weight:600">WEAVE WINS</td>
+            </tr>
+            <tr>
+              <td>TS: interface field additions</td>
+              <td class="win">clean (750us)</td>
+              <td class="lose">CONFLICT</td>
+              <td style="color:var(--green);font-weight:600">WEAVE WINS</td>
+            </tr>
+            <tr>
+              <td>Rust: enum variant additions</td>
+              <td class="win">clean (658us)</td>
+              <td class="lose">CONFLICT</td>
+              <td style="color:var(--green);font-weight:600">WEAVE WINS</td>
+            </tr>
+            <tr>
+              <td>Java: different methods in same class</td>
+              <td class="win">clean (1658us)</td>
+              <td class="win">clean (51us)</td>
+              <td>both clean</td>
+            </tr>
+            <tr>
+              <td>Java: both add annotations</td>
+              <td class="win">clean (1064us)</td>
+              <td class="lose">CONFLICT</td>
+              <td style="color:var(--green);font-weight:600">WEAVE WINS</td>
+            </tr>
+            <tr>
+              <td>C: different functions modified</td>
+              <td class="win">clean (1000us)</td>
+              <td class="win">clean (24us)</td>
+              <td>both clean</td>
+            </tr>
           </tbody>
         </table>
       </div>
       <p style="font-size:13px;color:var(--dim);margin-top:16px;line-height:1.7;">
-        <strong style="color:var(--accent)">weave: 16/16 clean (100%)</strong> vs <strong style="color:var(--dim)">git: 8/16 clean (50%)</strong>.
-        Git cannot resolve 8 of the 16 scenarios. Weave resolves all of them using entity-level merging,
-        commutative import merge, inner entity decomposition, and whitespace-aware conflict avoidance.
+        <strong style="color:var(--accent)">weave: 24/24 clean (100%)</strong> vs <strong style="color:var(--dim)">git: 11/24 clean (46%)</strong>.
+        Git cannot resolve 13 of the 24 scenarios. Weave resolves all of them using entity-level merging,
+        commutative import merge, inner entity decomposition, decorator-aware merge, and whitespace-aware conflict avoidance.
         Every false conflict that git reports, weave handles automatically.
       </p>
     </section>
@@ -286,6 +334,8 @@
           <tr><td>Python</td><td>.py</td><td>functions, classes, decorators</td></tr>
           <tr><td>Go</td><td>.go</td><td>functions, methods, types</td></tr>
           <tr><td>Rust</td><td>.rs</td><td>functions, structs, enums, impls, traits</td></tr>
+          <tr><td>Java</td><td>.java</td><td>classes, methods, interfaces, enums, fields</td></tr>
+          <tr><td>C</td><td>.c .h</td><td>functions, structs, enums, unions, typedefs</td></tr>
           <tr><td>JSON</td><td>.json</td><td>properties, objects</td></tr>
           <tr><td>YAML</td><td>.yml .yaml</td><td>sections, properties</td></tr>
           <tr><td>TOML</td><td>.toml</td><td>sections, properties</td></tr>

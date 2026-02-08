@@ -770,3 +770,126 @@ fn ts_both_reformat_same_function_no_conflict() {
         result.conflicts,
     );
 }
+
+// =============================================================================
+// Java: method-level merge and annotation merge
+// =============================================================================
+
+#[test]
+fn java_different_methods_modified_auto_resolves() {
+    let base = r#"public class UserService {
+    public User getUser(String id) {
+        return db.find(id);
+    }
+
+    public void createUser(User user) {
+        db.save(user);
+    }
+}
+"#;
+    let ours = r#"public class UserService {
+    public User getUser(String id) {
+        User user = db.find(id);
+        logger.info("Found: " + id);
+        return user;
+    }
+
+    public void createUser(User user) {
+        db.save(user);
+    }
+}
+"#;
+    let theirs = r#"public class UserService {
+    public User getUser(String id) {
+        return db.find(id);
+    }
+
+    public void createUser(User user) {
+        validateUser(user);
+        db.save(user);
+    }
+}
+"#;
+    let result = entity_merge(base, ours, theirs, "UserService.java");
+    assert!(
+        result.is_clean(),
+        "Different Java methods modified should auto-resolve. Conflicts: {:?}",
+        result.conflicts,
+    );
+    assert!(result.content.contains("logger.info"), "Should contain ours change");
+    assert!(result.content.contains("validateUser"), "Should contain theirs change");
+}
+
+#[test]
+fn java_both_add_different_annotations() {
+    let base = r#"public class Controller {
+    public Response handle(Request req) {
+        return service.process(req);
+    }
+}
+"#;
+    let ours = r#"public class Controller {
+    @Cacheable(ttl = 60)
+    public Response handle(Request req) {
+        return service.process(req);
+    }
+}
+"#;
+    let theirs = r#"public class Controller {
+    @RateLimit(100)
+    public Response handle(Request req) {
+        return service.process(req);
+    }
+}
+"#;
+    let result = entity_merge(base, ours, theirs, "Controller.java");
+    assert!(
+        result.is_clean(),
+        "Both adding different annotations should auto-resolve. Conflicts: {:?}",
+        result.conflicts,
+    );
+    assert!(result.content.contains("@Cacheable"), "Should contain ours annotation");
+    assert!(result.content.contains("@RateLimit"), "Should contain theirs annotation");
+}
+
+// =============================================================================
+// C: function-level merge
+// =============================================================================
+
+#[test]
+fn c_different_functions_modified_auto_resolves() {
+    let base = r#"void init(Config* cfg) {
+    cfg->ready = 1;
+}
+
+int process(Data* data) {
+    return data->value * 2;
+}
+"#;
+    let ours = r#"void init(Config* cfg) {
+    cfg->ready = 1;
+    log_debug("initialized");
+}
+
+int process(Data* data) {
+    return data->value * 2;
+}
+"#;
+    let theirs = r#"void init(Config* cfg) {
+    cfg->ready = 1;
+}
+
+int process(Data* data) {
+    if (data == NULL) return -1;
+    return data->value * 2;
+}
+"#;
+    let result = entity_merge(base, ours, theirs, "utils.c");
+    assert!(
+        result.is_clean(),
+        "Different C functions modified should auto-resolve. Conflicts: {:?}",
+        result.conflicts,
+    );
+    assert!(result.content.contains("log_debug"), "Should contain ours change");
+    assert!(result.content.contains("NULL"), "Should contain theirs change");
+}

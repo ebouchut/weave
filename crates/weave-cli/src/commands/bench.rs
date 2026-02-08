@@ -622,6 +622,305 @@ export function last() {
 }
 "#,
         },
+        // --- New scenarios: decorator/annotation merge ---
+        Scenario {
+            name: "Python: both add different decorators",
+            description: "Both add different decorators to same function — git conflicts",
+            file_path: "decorators.py",
+            base: r#"def process(data):
+    validated = validate(data)
+    return transform(validated)
+
+def helper():
+    return True
+"#,
+            ours: r#"@cache
+@log_calls
+def process(data):
+    validated = validate(data)
+    return transform(validated)
+
+def helper():
+    return True
+"#,
+            theirs: r#"@deprecated("use process_v2")
+@retry(max_attempts=3)
+def process(data):
+    validated = validate(data)
+    return transform(validated)
+
+def helper():
+    return True
+"#,
+        },
+        Scenario {
+            name: "Decorator + body change",
+            description: "One adds decorator, other modifies body — should merge",
+            file_path: "deco-body.py",
+            base: r#"def fetch(url):
+    return requests.get(url)
+
+def parse(data):
+    return json.loads(data)
+"#,
+            ours: r#"@cache(ttl=300)
+def fetch(url):
+    return requests.get(url)
+
+def parse(data):
+    return json.loads(data)
+"#,
+            theirs: r#"def fetch(url):
+    response = requests.get(url, timeout=30)
+    response.raise_for_status()
+    return response
+
+def parse(data):
+    return json.loads(data)
+"#,
+        },
+        Scenario {
+            name: "TS: class method decorators",
+            description: "Both add different decorators to class method",
+            file_path: "class-deco.ts",
+            base: r#"class UserService {
+    getUser(id: string) {
+        return this.db.find(id);
+    }
+
+    createUser(data: any) {
+        return this.db.create(data);
+    }
+}
+"#,
+            ours: r#"class UserService {
+    @Cacheable({ ttl: 60 })
+    getUser(id: string) {
+        return this.db.find(id);
+    }
+
+    createUser(data: any) {
+        return this.db.create(data);
+    }
+}
+"#,
+            theirs: r#"class UserService {
+    @RateLimit(100)
+    getUser(id: string) {
+        return this.db.find(id);
+    }
+
+    createUser(data: any) {
+        return this.db.create(data);
+    }
+}
+"#,
+        },
+        // --- New scenarios: struct/interface/enum field merge ---
+        Scenario {
+            name: "TS: interface field additions",
+            description: "Both add different fields to same interface",
+            file_path: "types.ts",
+            base: r#"interface UserConfig {
+    name: string;
+    email: string;
+}
+
+export function getUser(): UserConfig {
+    return { name: "", email: "" };
+}
+"#,
+            ours: r#"interface UserConfig {
+    name: string;
+    email: string;
+    age: number;
+    phone: string;
+}
+
+export function getUser(): UserConfig {
+    return { name: "", email: "" };
+}
+"#,
+            theirs: r#"interface UserConfig {
+    name: string;
+    email: string;
+    role: string;
+    isActive: boolean;
+}
+
+export function getUser(): UserConfig {
+    return { name: "", email: "" };
+}
+"#,
+        },
+        Scenario {
+            name: "Rust: enum variant additions",
+            description: "Both add different variants to same enum",
+            file_path: "types.rs",
+            base: r#"enum Status {
+    Active,
+    Inactive,
+}
+
+fn check_status(s: &Status) -> bool {
+    matches!(s, Status::Active)
+}
+"#,
+            ours: r#"enum Status {
+    Active,
+    Inactive,
+    Pending,
+    Suspended,
+}
+
+fn check_status(s: &Status) -> bool {
+    matches!(s, Status::Active)
+}
+"#,
+            theirs: r#"enum Status {
+    Active,
+    Inactive,
+    Archived,
+    Deleted,
+}
+
+fn check_status(s: &Status) -> bool {
+    matches!(s, Status::Active)
+}
+"#,
+        },
+        // --- New scenarios: Java and C merge ---
+        Scenario {
+            name: "Java: different methods in same class",
+            description: "Both modify different methods in a Java class",
+            file_path: "UserService.java",
+            base: r#"public class UserService {
+    public User getUser(String id) {
+        return db.find(id);
+    }
+
+    public void createUser(User user) {
+        db.save(user);
+    }
+
+    public void deleteUser(String id) {
+        db.delete(id);
+    }
+}
+"#,
+            ours: r#"public class UserService {
+    public User getUser(String id) {
+        User user = db.find(id);
+        logger.info("Found user: " + id);
+        return user;
+    }
+
+    public void createUser(User user) {
+        db.save(user);
+    }
+
+    public void deleteUser(String id) {
+        db.delete(id);
+    }
+}
+"#,
+            theirs: r#"public class UserService {
+    public User getUser(String id) {
+        return db.find(id);
+    }
+
+    public void createUser(User user) {
+        validateUser(user);
+        db.save(user);
+        eventBus.publish(new UserCreatedEvent(user));
+    }
+
+    public void deleteUser(String id) {
+        db.delete(id);
+    }
+}
+"#,
+        },
+        Scenario {
+            name: "Java: both add annotations",
+            description: "Both add different annotations to same method",
+            file_path: "Controller.java",
+            base: r#"public class Controller {
+    public Response handle(Request req) {
+        return service.process(req);
+    }
+
+    public Response health() {
+        return Response.ok();
+    }
+}
+"#,
+            ours: r#"public class Controller {
+    @Cacheable(ttl = 60)
+    public Response handle(Request req) {
+        return service.process(req);
+    }
+
+    public Response health() {
+        return Response.ok();
+    }
+}
+"#,
+            theirs: r#"public class Controller {
+    @RateLimit(100)
+    public Response handle(Request req) {
+        return service.process(req);
+    }
+
+    public Response health() {
+        return Response.ok();
+    }
+}
+"#,
+        },
+        Scenario {
+            name: "C: different functions modified",
+            description: "Both modify different functions in a C file",
+            file_path: "utils.c",
+            base: r#"void init(Config* cfg) {
+    cfg->ready = 1;
+}
+
+int process(Data* data) {
+    return data->value * 2;
+}
+
+void cleanup(Config* cfg) {
+    cfg->ready = 0;
+}
+"#,
+            ours: r#"void init(Config* cfg) {
+    cfg->ready = 1;
+    log_debug("initialized");
+}
+
+int process(Data* data) {
+    return data->value * 2;
+}
+
+void cleanup(Config* cfg) {
+    cfg->ready = 0;
+}
+"#,
+            theirs: r#"void init(Config* cfg) {
+    cfg->ready = 1;
+}
+
+int process(Data* data) {
+    if (data == NULL) return -1;
+    return data->value * 2;
+}
+
+void cleanup(Config* cfg) {
+    cfg->ready = 0;
+}
+"#,
+        },
     ];
 
     let mut total_weave_clean = 0;
