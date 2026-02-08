@@ -86,6 +86,41 @@
 
     <section style="border-top: none; padding-top: 12px;">
 
+      <!-- Commit: Confidence scoring, weave_diff, parse validation, whitespace-aware merge -->
+      <div class="commit">
+        <div class="commit-header">
+          <a class="commit-hash" href="https://github.com/Ataraxy-Labs/weave/commit/0f6a925">0f6a925</a>
+          <span class="commit-date">Feb 7, 2026</span>
+        </div>
+        <div class="commit-title">Add confidence scoring, weave_diff MCP tool, whitespace-aware merge, and 16-scenario benchmark</div>
+        <div class="commit-tags">
+          <span class="commit-tag" style="background: #4ade8022; color: var(--green);">feature</span>
+          <span class="commit-tag" style="background: #fb923c22; color: var(--orange);">perf</span>
+          <span class="commit-tag" style="background: #a78bfa22; color: var(--purple);">research</span>
+        </div>
+        <div class="commit-body">
+          <p>Major expansion of the benchmark suite from 7 to 16 scenarios. Results in release mode:</p>
+          <ul>
+            <li><strong>weave: 16/16 clean merges (100%)</strong> vs <strong>git: 8/16 (50%)</strong></li>
+            <li>Weave now resolves <strong>8 additional merges</strong> that git cannot, up from 1</li>
+            <li><strong>False conflict reduction: 100%</strong> &mdash; every git false conflict is auto-resolved</li>
+          </ul>
+          <p><strong>New features:</strong></p>
+          <ul>
+            <li><strong>Confidence scoring</strong>: MergeStats tracks how each entity was resolved &mdash; <code>very_high</code> (one side changed), <code>high</code> (diffy 3-way), <code>medium</code> (inner merge/fallback), <code>conflict</code></li>
+            <li><strong>weave_diff MCP tool</strong>: Entity-level diff between two refs (14th MCP tool)</li>
+            <li><strong>Post-merge parse validation</strong> (MergeBot-inspired): Re-parses merged output, warns if syntactically broken</li>
+            <li><strong>Whitespace-aware conflict avoidance</strong>: When one side only changes formatting and the other makes semantic changes, takes the content-change side instead of conflicting</li>
+            <li><strong>diff_files() git helper</strong>: Lists changed files between two refs</li>
+          </ul>
+          <p><strong>New benchmark scenarios</strong>: both add functions at end, both add methods to class, Rust/Python import merging, insert-between-existing, reformat-vs-modify, both add exports</p>
+        </div>
+        <div class="lesson">
+          <div class="lesson-label">Key Insight</div>
+          <p>Most "conflicts" in multi-agent workflows are false positives &mdash; git reports conflicts because changes are on adjacent lines, not because they're actually incompatible. Entity-level understanding eliminates this entire class of problems. Research shows 10-20% of all git merges produce conflicts (Ghiotto et al. 2019), and our whitespace-aware shortcut handles the common case where one agent's formatter runs while another makes real changes.</p>
+        </div>
+      </div>
+
       <!-- Commit: Nested entity filter + bench command -->
       <div class="commit">
         <div class="commit-header">

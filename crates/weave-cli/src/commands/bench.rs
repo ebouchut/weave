@@ -309,6 +309,319 @@ export function beta() {
             f.write(data)
 "#,
         },
+        Scenario {
+            name: "Python: adjacent methods (harder)",
+            description: "Two agents modify adjacent methods in Python class — diffy often fails",
+            file_path: "service.py",
+            base: r#"class Service:
+    def create(self, data):
+        return self.db.insert(data)
+
+    def read(self, id):
+        return self.db.find(id)
+
+    def update(self, id, data):
+        self.db.update(id, data)
+
+    def delete(self, id):
+        self.db.remove(id)
+"#,
+            ours: r#"class Service:
+    def create(self, data):
+        if not data:
+            raise ValueError("empty")
+        result = self.db.insert(data)
+        self.log.info(f"Created {result.id}")
+        return result
+
+    def read(self, id):
+        return self.db.find(id)
+
+    def update(self, id, data):
+        self.db.update(id, data)
+
+    def delete(self, id):
+        self.db.remove(id)
+"#,
+            theirs: r#"class Service:
+    def create(self, data):
+        return self.db.insert(data)
+
+    def read(self, id):
+        cached = self.cache.get(id)
+        if cached:
+            return cached
+        result = self.db.find(id)
+        self.cache.set(id, result)
+        return result
+
+    def update(self, id, data):
+        self.db.update(id, data)
+
+    def delete(self, id):
+        self.db.remove(id)
+"#,
+        },
+        Scenario {
+            name: "TS: both add exports at end",
+            description: "Both agents add different named exports — a very common pattern",
+            file_path: "exports.ts",
+            base: r#"export function alpha(): string {
+    return "alpha";
+}
+
+export function beta(): string {
+    return "beta";
+}
+"#,
+            ours: r#"export function alpha(): string {
+    return "alpha";
+}
+
+export function beta(): string {
+    return "beta";
+}
+
+export function gamma(): string {
+    return "gamma - from agent A";
+}
+"#,
+            theirs: r#"export function alpha(): string {
+    return "alpha";
+}
+
+export function beta(): string {
+    return "beta";
+}
+
+export function delta(): string {
+    return "delta - from agent B";
+}
+"#,
+        },
+        Scenario {
+            name: "Reformat vs modify (whitespace-aware)",
+            description: "One agent reformats, other makes real change — whitespace detection",
+            file_path: "format.ts",
+            base: r#"export function process(data: string): string {
+    return data.trim();
+}
+
+export function validate(input: string): boolean {
+    return input.length > 0;
+}
+"#,
+            ours: r#"export function process(data: string): string {
+      return data.trim();
+}
+
+export function validate(input: string): boolean {
+      return input.length > 0;
+}
+"#,
+            theirs: r#"export function process(data: string): string {
+    const cleaned = data.trim();
+    return cleaned.toUpperCase();
+}
+
+export function validate(input: string): boolean {
+    return input.length > 0;
+}
+"#,
+        },
+        // --- NEW: scenarios targeting known git false-conflict patterns ---
+        Scenario {
+            name: "Both add new functions at end of file",
+            description: "Both agents append different functions — git conflicts on insertion point",
+            file_path: "append.ts",
+            base: r#"export function existing() {
+    return "exists";
+}
+"#,
+            ours: r#"export function existing() {
+    return "exists";
+}
+
+export function featureA() {
+    return "added by agent A";
+}
+"#,
+            theirs: r#"export function existing() {
+    return "exists";
+}
+
+export function featureB() {
+    return "added by agent B";
+}
+"#,
+        },
+        Scenario {
+            name: "Both add methods to class at end",
+            description: "Both agents add different methods to end of class — git conflicts",
+            file_path: "class-append.ts",
+            base: r#"export class Router {
+    get(path: string) {
+        return this.routes.get(path);
+    }
+}
+"#,
+            ours: r#"export class Router {
+    get(path: string) {
+        return this.routes.get(path);
+    }
+
+    post(path: string, handler: Handler) {
+        this.routes.set(path, handler);
+    }
+}
+"#,
+            theirs: r#"export class Router {
+    get(path: string) {
+        return this.routes.get(path);
+    }
+
+    delete(path: string) {
+        this.routes.delete(path);
+    }
+}
+"#,
+        },
+        Scenario {
+            name: "Rust: both add different use statements",
+            description: "Both agents add different use imports — commutative merge",
+            file_path: "lib.rs",
+            base: r#"use std::io;
+use std::fs;
+
+pub fn process() {
+    println!("processing");
+}
+"#,
+            ours: r#"use std::io;
+use std::fs;
+use std::path::PathBuf;
+
+pub fn process() {
+    println!("processing");
+}
+"#,
+            theirs: r#"use std::io;
+use std::fs;
+use std::collections::HashMap;
+
+pub fn process() {
+    println!("processing");
+}
+"#,
+        },
+        Scenario {
+            name: "Python: both add different imports",
+            description: "Both agents add different Python imports — commutative merge",
+            file_path: "app.py",
+            base: r#"import os
+import sys
+
+def main():
+    print("hello")
+"#,
+            ours: r#"import os
+import sys
+import json
+
+def main():
+    print("hello")
+"#,
+            theirs: r#"import os
+import sys
+import pathlib
+
+def main():
+    print("hello")
+"#,
+        },
+        Scenario {
+            name: "Class: modify method + add new method",
+            description: "Agent A modifies a method, Agent B adds a new one — tests mixed changes",
+            file_path: "mixed.ts",
+            base: r#"export class Cache {
+    get(key: string): string | null {
+        return this.store[key] || null;
+    }
+
+    set(key: string, value: string): void {
+        this.store[key] = value;
+    }
+}
+"#,
+            ours: r#"export class Cache {
+    get(key: string): string | null {
+        const val = this.store[key];
+        if (!val) return null;
+        this.hits++;
+        return val;
+    }
+
+    set(key: string, value: string): void {
+        this.store[key] = value;
+    }
+}
+"#,
+            theirs: r#"export class Cache {
+    get(key: string): string | null {
+        return this.store[key] || null;
+    }
+
+    set(key: string, value: string): void {
+        this.store[key] = value;
+    }
+
+    delete(key: string): boolean {
+        if (this.store[key]) {
+            delete this.store[key];
+            return true;
+        }
+        return false;
+    }
+}
+"#,
+        },
+        Scenario {
+            name: "Both add functions between existing ones",
+            description: "Both insert different functions in the middle — git conflicts on position",
+            file_path: "insert-middle.ts",
+            base: r#"export function first() {
+    return 1;
+}
+
+export function last() {
+    return 99;
+}
+"#,
+            ours: r#"export function first() {
+    return 1;
+}
+
+export function middleA() {
+    return "from agent A";
+}
+
+export function last() {
+    return 99;
+}
+"#,
+            theirs: r#"export function first() {
+    return 1;
+}
+
+export function middleB() {
+    return "from agent B";
+}
+
+export function last() {
+    return 99;
+}
+"#,
+        },
     ];
 
     let mut total_weave_clean = 0;
@@ -316,7 +629,7 @@ export function beta() {
     let total_scenarios = scenarios.len();
 
     for scenario in &scenarios {
-        print!("  {:<45}", scenario.name);
+        print!("  {:<50}", scenario.name);
 
         // Run weave merge
         let start = Instant::now();

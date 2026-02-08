@@ -153,7 +153,7 @@
     <!-- Benchmark Results -->
     <section>
       <h2>Benchmark results</h2>
-      <p class="section-desc">Run <code style="background:var(--surface);padding:2px 6px;border-radius:3px;font-size:12px;">weave bench</code> to reproduce. 7 real-world merge scenarios, release build on Apple Silicon.</p>
+      <p class="section-desc">Run <code style="background:var(--surface);padding:2px 6px;border-radius:3px;font-size:12px;">weave bench</code> to reproduce. 16 merge scenarios, release build on Apple Silicon.</p>
       <div class="comparison-table">
         <table>
           <thead>
@@ -167,53 +167,108 @@
           <tbody>
             <tr>
               <td>Different functions modified</td>
-              <td class="win">clean (2ms)</td>
-              <td class="win">clean (14us)</td>
+              <td class="win">clean (1.9ms)</td>
+              <td class="win">clean (29us)</td>
               <td>both clean</td>
             </tr>
             <tr>
               <td>Different class methods modified</td>
-              <td class="win">clean (566us)</td>
-              <td class="win">clean (11us)</td>
+              <td class="win">clean (694us)</td>
+              <td class="win">clean (10us)</td>
               <td>both clean</td>
             </tr>
             <tr>
-              <td>Both add different imports</td>
-              <td class="win">clean (163us)</td>
+              <td>Both add different imports (TS)</td>
+              <td class="win">clean (131us)</td>
               <td class="lose">CONFLICT</td>
               <td style="color:var(--green);font-weight:600">WEAVE WINS</td>
             </tr>
             <tr>
               <td>Class: different methods among 4</td>
-              <td class="win">clean (448us)</td>
-              <td class="win">clean (10us)</td>
+              <td class="win">clean (538us)</td>
+              <td class="win">clean (9us)</td>
               <td>both clean</td>
             </tr>
             <tr>
               <td>One adds, other modifies</td>
-              <td class="win">clean (85us)</td>
+              <td class="win">clean (73us)</td>
               <td class="win">clean (5us)</td>
               <td>both clean</td>
             </tr>
             <tr>
               <td>Adjacent function changes</td>
-              <td class="win">clean (88us)</td>
-              <td class="win">clean (5us)</td>
+              <td class="win">clean (77us)</td>
+              <td class="win">clean (4us)</td>
               <td>both clean</td>
             </tr>
             <tr>
               <td>Python: different class methods</td>
-              <td class="win">clean (844us)</td>
-              <td class="win">clean (7us)</td>
+              <td class="win">clean (851us)</td>
+              <td class="win">clean (6us)</td>
               <td>both clean</td>
+            </tr>
+            <tr>
+              <td>Python: adjacent methods (4-method class)</td>
+              <td class="win">clean (562us)</td>
+              <td class="win">clean (8us)</td>
+              <td>both clean</td>
+            </tr>
+            <tr>
+              <td>Both add exports at end of file</td>
+              <td class="win">clean (128us)</td>
+              <td class="lose">CONFLICT</td>
+              <td style="color:var(--green);font-weight:600">WEAVE WINS</td>
+            </tr>
+            <tr>
+              <td>Reformat vs modify (whitespace-aware)</td>
+              <td class="win">clean (134us)</td>
+              <td class="lose">CONFLICT</td>
+              <td style="color:var(--green);font-weight:600">WEAVE WINS</td>
+            </tr>
+            <tr>
+              <td>Both add functions at end of file</td>
+              <td class="win">clean (69us)</td>
+              <td class="lose">CONFLICT</td>
+              <td style="color:var(--green);font-weight:600">WEAVE WINS</td>
+            </tr>
+            <tr>
+              <td>Both add methods to class at end</td>
+              <td class="win">clean (215us)</td>
+              <td class="lose">CONFLICT</td>
+              <td style="color:var(--green);font-weight:600">WEAVE WINS</td>
+            </tr>
+            <tr>
+              <td>Rust: both add different use statements</td>
+              <td class="win">clean (577us)</td>
+              <td class="lose">CONFLICT</td>
+              <td style="color:var(--green);font-weight:600">WEAVE WINS</td>
+            </tr>
+            <tr>
+              <td>Python: both add different imports</td>
+              <td class="win">clean (113us)</td>
+              <td class="lose">CONFLICT</td>
+              <td style="color:var(--green);font-weight:600">WEAVE WINS</td>
+            </tr>
+            <tr>
+              <td>Class: modify method + add new</td>
+              <td class="win">clean (358us)</td>
+              <td class="win">clean (6us)</td>
+              <td>both clean</td>
+            </tr>
+            <tr>
+              <td>Both add functions between existing</td>
+              <td class="win">clean (94us)</td>
+              <td class="lose">CONFLICT</td>
+              <td style="color:var(--green);font-weight:600">WEAVE WINS</td>
             </tr>
           </tbody>
         </table>
       </div>
       <p style="font-size:13px;color:var(--dim);margin-top:16px;line-height:1.7;">
-        <strong style="color:var(--accent)">weave: 7/7 clean (100%)</strong> vs <strong style="color:var(--dim)">git: 6/7 clean (86%)</strong>.
-        Weave is slower per-merge (AST parsing overhead) but resolves conflicts that git cannot.
-        The import merge uses commutative set-based merging; the class merge uses inner entity decomposition.
+        <strong style="color:var(--accent)">weave: 16/16 clean (100%)</strong> vs <strong style="color:var(--dim)">git: 8/16 clean (50%)</strong>.
+        Git cannot resolve 8 of the 16 scenarios. Weave resolves all of them using entity-level merging,
+        commutative import merge, inner entity decomposition, and whitespace-aware conflict avoidance.
+        Every false conflict that git reports, weave handles automatically.
       </p>
     </section>
 

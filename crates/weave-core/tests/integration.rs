@@ -654,3 +654,119 @@ fn ts_class_4methods_different_agents_modify_different_methods() {
     assert!(result.content.contains("deleteUser"));
     assert!(result.content.contains("listUsers"));
 }
+
+#[test]
+fn py_class_different_methods_modified_auto_resolves() {
+    // Python class: two agents modify different methods (adjacent changes that diffy may fail on)
+    let base = r#"class Service:
+    def create(self, data):
+        return self.db.insert(data)
+
+    def read(self, id):
+        return self.db.find(id)
+
+    def update(self, id, data):
+        self.db.update(id, data)
+
+    def delete(self, id):
+        self.db.remove(id)
+"#;
+    // Agent A adds validation + logging to create
+    let ours = r#"class Service:
+    def create(self, data):
+        if not data:
+            raise ValueError("empty")
+        result = self.db.insert(data)
+        self.log.info(f"Created {result.id}")
+        return result
+
+    def read(self, id):
+        return self.db.find(id)
+
+    def update(self, id, data):
+        self.db.update(id, data)
+
+    def delete(self, id):
+        self.db.remove(id)
+"#;
+    // Agent B adds caching to read
+    let theirs = r#"class Service:
+    def create(self, data):
+        return self.db.insert(data)
+
+    def read(self, id):
+        cached = self.cache.get(id)
+        if cached:
+            return cached
+        result = self.db.find(id)
+        self.cache.set(id, result)
+        return result
+
+    def update(self, id, data):
+        self.db.update(id, data)
+
+    def delete(self, id):
+        self.db.remove(id)
+"#;
+    let result = entity_merge(base, ours, theirs, "service.py");
+    assert!(
+        result.is_clean(),
+        "Python class: different methods modified should auto-merge. Conflicts: {:?}",
+        result.conflicts,
+    );
+    assert!(result.content.contains("raise ValueError"), "Should contain ours's validation");
+    assert!(result.content.contains("self.cache.get"), "Should contain theirs's caching");
+    assert!(result.content.contains("def update"), "Should preserve unchanged methods");
+}
+
+#[test]
+fn ts_one_reformats_other_modifies_no_conflict() {
+    // Agent A reformats indentation, Agent B makes semantic change
+    // Should detect that A's changes are whitespace-only and take B's version
+    let base = r#"export function process(data: string): string {
+    return data.trim();
+}
+"#;
+    // Agent A only changes whitespace (adds extra indentation)
+    let ours = r#"export function process(data: string): string {
+      return data.trim();
+}
+"#;
+    // Agent B makes a real change
+    let theirs = r#"export function process(data: string): string {
+    const cleaned = data.trim();
+    console.log("Processing:", cleaned);
+    return cleaned.toUpperCase();
+}
+"#;
+    let result = entity_merge(base, ours, theirs, "utils.ts");
+    assert!(
+        result.is_clean(),
+        "Whitespace-only change vs real change should not conflict. Conflicts: {:?}",
+        result.conflicts,
+    );
+    assert!(result.content.contains("toUpperCase"), "Should take the real change (theirs)");
+}
+
+#[test]
+fn ts_both_reformat_same_function_no_conflict() {
+    // Both agents only change whitespace — should resolve cleanly
+    let base = r#"export function hello(): string {
+    return "hello";
+}
+"#;
+    let ours = r#"export function hello(): string {
+      return "hello";
+}
+"#;
+    let theirs = r#"export function hello(): string {
+        return "hello";
+}
+"#;
+    let result = entity_merge(base, ours, theirs, "fmt.ts");
+    assert!(
+        result.is_clean(),
+        "Both whitespace-only changes should not conflict. Conflicts: {:?}",
+        result.conflicts,
+    );
+}

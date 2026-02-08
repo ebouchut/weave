@@ -337,6 +337,20 @@ fn resolve_entity(
                         let base_rc = region_content(base, base_region_content);
                         let ours_rc = region_content(ours, ours_region_content);
                         let theirs_rc = region_content(theirs, theirs_region_content);
+
+                        // Whitespace-aware shortcut: if one side only changed
+                        // whitespace/formatting, take the other side's content changes.
+                        // This handles the common case where one agent reformats while
+                        // another makes semantic changes.
+                        if is_whitespace_only_diff(&base_rc, &ours_rc) {
+                            stats.entities_theirs_only += 1;
+                            return ResolvedEntity::Clean(entity_to_region_with_content(theirs, &theirs_rc));
+                        }
+                        if is_whitespace_only_diff(&base_rc, &theirs_rc) {
+                            stats.entities_ours_only += 1;
+                            return ResolvedEntity::Clean(entity_to_region_with_content(ours, &ours_rc));
+                        }
+
                         match diffy_merge(&base_rc, &ours_rc, &theirs_rc) {
                             Some(merged) => {
                                 stats.entities_both_changed_merged += 1;
@@ -507,6 +521,17 @@ fn build_region_content_map(regions: &[FileRegion]) -> HashMap<String, String> {
             _ => None,
         })
         .collect()
+}
+
+/// Check if the only differences between two strings are whitespace changes.
+/// This includes: indentation changes, trailing whitespace, blank line additions/removals.
+fn is_whitespace_only_diff(a: &str, b: &str) -> bool {
+    if a == b {
+        return true; // identical, not really a "whitespace-only diff" but safe
+    }
+    let a_normalized: Vec<&str> = a.lines().map(|l| l.trim()).filter(|l| !l.is_empty()).collect();
+    let b_normalized: Vec<&str> = b.lines().map(|l| l.trim()).filter(|l| !l.is_empty()).collect();
+    a_normalized == b_normalized
 }
 
 /// Try 3-way merge on text using diffy. Returns None if there are conflicts.
@@ -1687,5 +1712,33 @@ export function agentB() {
         assert!(result.contains("use std::collections::HashMap;"));
         assert!(result.contains("use std::io;"));
         assert!(result.contains("use std::fs;"));
+    }
+
+    #[test]
+    fn test_is_whitespace_only_diff_true() {
+        // Same content, different indentation
+        assert!(is_whitespace_only_diff(
+            "    return 1;\n    return 2;\n",
+            "      return 1;\n      return 2;\n"
+        ));
+        // Same content, extra blank lines
+        assert!(is_whitespace_only_diff(
+            "return 1;\nreturn 2;\n",
+            "return 1;\n\nreturn 2;\n"
+        ));
+    }
+
+    #[test]
+    fn test_is_whitespace_only_diff_false() {
+        // Different content
+        assert!(!is_whitespace_only_diff(
+            "    return 1;\n",
+            "    return 2;\n"
+        ));
+        // Added code
+        assert!(!is_whitespace_only_diff(
+            "return 1;\n",
+            "return 1;\nconsole.log('x');\n"
+        ));
     }
 }
