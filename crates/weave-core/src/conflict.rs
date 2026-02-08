@@ -221,11 +221,29 @@ pub struct MergeStats {
     pub used_fallback: bool,
     /// Entities that were auto-merged but reference other modified entities.
     pub semantic_warnings: usize,
+    /// Entities resolved via diffy 3-way merge (medium confidence).
+    pub resolved_via_diffy: usize,
+    /// Entities resolved via inner entity merge (high confidence).
+    pub resolved_via_inner_merge: usize,
 }
 
 impl MergeStats {
     pub fn has_conflicts(&self) -> bool {
         self.entities_conflicted > 0
+    }
+
+    /// Overall merge confidence: High (only one side changed), Medium (diffy resolved),
+    /// Low (inner entity merge or fallback), or Conflict.
+    pub fn confidence(&self) -> &'static str {
+        if self.entities_conflicted > 0 {
+            "conflict"
+        } else if self.resolved_via_inner_merge > 0 || self.used_fallback {
+            "medium"
+        } else if self.resolved_via_diffy > 0 {
+            "high"
+        } else {
+            "very_high"
+        }
     }
 }
 

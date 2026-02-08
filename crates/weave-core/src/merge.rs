@@ -263,10 +263,26 @@ pub fn entity_merge_with_registry(
         &merged_interstitials,
     );
 
+    // Post-merge parse validation: verify the merged result still parses correctly
+    // (MergeBot-inspired safety check — catch syntactically broken merges)
+    let mut warnings = vec![];
+    if conflicts.is_empty() && stats.entities_both_changed_merged > 0 {
+        let merged_entities = plugin.extract_entities(&content, file_path);
+        if merged_entities.is_empty() && !content.trim().is_empty() {
+            warnings.push(crate::validate::SemanticWarning {
+                entity_name: "(file)".to_string(),
+                entity_type: "file".to_string(),
+                file_path: file_path.to_string(),
+                kind: crate::validate::WarningKind::ParseFailedAfterMerge,
+                related: vec![],
+            });
+        }
+    }
+
     MergeResult {
         content,
         conflicts,
-        warnings: vec![],
+        warnings,
         stats,
     }
 }
@@ -324,6 +340,7 @@ fn resolve_entity(
                         match diffy_merge(&base_rc, &ours_rc, &theirs_rc) {
                             Some(merged) => {
                                 stats.entities_both_changed_merged += 1;
+                                stats.resolved_via_diffy += 1;
                                 ResolvedEntity::Clean(EntityRegion {
                                     entity_id: ours.id.clone(),
                                     entity_name: ours.name.clone(),
@@ -339,6 +356,7 @@ fn resolve_entity(
                                 if is_container_entity_type(&ours.entity_type) {
                                     if let Some(merged) = try_inner_entity_merge(&base_rc, &ours_rc, &theirs_rc) {
                                         stats.entities_both_changed_merged += 1;
+                                        stats.resolved_via_inner_merge += 1;
                                         return ResolvedEntity::Clean(EntityRegion {
                                             entity_id: ours.id.clone(),
                                             entity_name: ours.name.clone(),

@@ -35,6 +35,8 @@ pub enum WarningKind {
     /// Entity is depended on by another entity that was also modified.
     /// The dependent may have adapted to old behavior.
     DependentAlsoModified,
+    /// The merged output failed to parse — syntactically broken merge result.
+    ParseFailedAfterMerge,
 }
 
 #[derive(Debug, Clone)]
@@ -158,6 +160,13 @@ impl std::fmt::Display for SemanticWarning {
                     self.entity_name,
                     self.related[0].entity_type,
                     self.related[0].name,
+                )
+            }
+            WarningKind::ParseFailedAfterMerge => {
+                write!(
+                    f,
+                    "warning: merged output for `{}` failed to parse — result may be syntactically broken",
+                    self.file_path,
                 )
             }
         }

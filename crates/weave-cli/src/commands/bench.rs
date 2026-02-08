@@ -351,9 +351,10 @@ export function beta() {
         };
 
         println!(
-            "weave: {:>5}us ({}) | git: {:>5}us ({}) | {}",
+            "weave: {:>5}us ({:<9} {}) | git: {:>5}us ({}) | {}",
             weave_time.as_micros(),
             if weave_clean { "clean" } else { "CONFLICT" },
+            weave_result.stats.confidence(),
             git_time.as_micros(),
             if git_clean { "clean" } else { "CONFLICT" },
             status,

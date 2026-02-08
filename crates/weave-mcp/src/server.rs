@@ -716,6 +716,80 @@ impl WeaveServer {
         Ok(CallToolResult::success(vec![Content::text("OK")]))
     }
 
+    #[tool(description = "Semantic diff between two refs: shows entity-level changes (added, modified, deleted, renamed) instead of line-level diffs")]
+    async fn weave_diff(
+        &self,
+        Parameters(params): Parameters<DiffParams>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
+        let _ctx = self
+            .get_context(params.file_path.as_deref())
+            .await
+            .map_err(internal_err)?;
+
+        let target_ref = params.target_ref.as_deref().unwrap_or("HEAD");
+
+        let files = if let Some(ref fp) = params.file_path {
+            let p = Path::new(fp);
+            if p.is_absolute() {
+                let root = git::find_repo_root_from_path(p)
+                    .map_err(|e| internal_err(e.to_string()))?;
+                let rel = p.strip_prefix(&root)
+                    .map(|r| r.to_string_lossy().to_string())
+                    .unwrap_or_else(|_| fp.clone());
+                vec![rel]
+            } else {
+                vec![fp.clone()]
+            }
+        } else {
+            git::diff_files(&params.base_ref, target_ref)
+                .map_err(|e| internal_err(e.to_string()))?
+        };
+
+        let mut all_changes = Vec::new();
+
+        for file in &files {
+            let plugin = match self.registry.get_plugin(file) {
+                Some(p) => p,
+                None => continue, // skip unsupported files
+            };
+
+            let base_content = git::git_show(&params.base_ref, file).unwrap_or_default();
+            let target_content = git::git_show(target_ref, file).unwrap_or_default();
+
+            let base_entities = plugin.extract_entities(&base_content, file);
+            let target_entities = plugin.extract_entities(&target_content, file);
+
+            let match_result = sem_core::model::identity::match_entities(
+                &base_entities,
+                &target_entities,
+                file,
+                None,
+                None,
+                None,
+            );
+
+            for change in match_result.changes {
+                all_changes.push(serde_json::json!({
+                    "file": file,
+                    "entity_name": change.entity_name,
+                    "entity_type": change.entity_type,
+                    "change_type": change.change_type.to_string(),
+                }));
+            }
+        }
+
+        Ok(CallToolResult::success(vec![Content::text(
+            serde_json::to_string_pretty(&serde_json::json!({
+                "base_ref": params.base_ref,
+                "target_ref": target_ref,
+                "files_analyzed": files.len(),
+                "total_changes": all_changes.len(),
+                "changes": all_changes,
+            }))
+            .unwrap_or_default(),
+        )]))
+    }
+
     #[tool(description = "Validate a merge for semantic risks: detect when auto-merged entities reference other entities that were also modified")]
     async fn weave_validate_merge(
         &self,

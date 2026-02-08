@@ -88,6 +88,22 @@ pub fn get_changed_files(
     Ok(both)
 }
 
+/// Get files changed between two refs.
+pub fn diff_files(
+    base_ref: &str,
+    target_ref: &str,
+) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+    let output = Command::new("git")
+        .args(["diff", "--name-only", base_ref, target_ref])
+        .output()?;
+    let files: Vec<String> = String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+        .collect();
+    Ok(files)
+}
+
 /// Read a file from the working tree relative to a root path.
 pub fn read_file(root: &Path, file_path: &str) -> Result<String, Box<dyn std::error::Error>> {
     let full = root.join(file_path);
