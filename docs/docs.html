@@ -112,7 +112,7 @@
       <div class="arch-arrow">&darr;</div>
       <div class="arch-layer" style="border-color: var(--cyan);">
         <div class="label" style="color: var(--cyan);">weave-mcp</div>
-        <div class="desc">MCP server with 9 tools. stdio transport for Claude Desktop/CLI integration. Wraps weave-crdt and weave-core into callable agent tools.</div>
+        <div class="desc">MCP server with 15 tools. stdio transport for Claude Desktop/CLI integration. Wraps weave-crdt and weave-core into callable agent tools.</div>
       </div>
       <div class="arch-arrow">&darr;</div>
       <div class="arch-layer" style="border-color: var(--orange);">
@@ -227,7 +227,7 @@
     <section id="mcp">
       <h2>MCP server</h2>
       <p class="section-desc">
-        <a href="https://modelcontextprotocol.io" style="color:var(--cyan)">MCP</a> (Model Context Protocol) lets AI agents call tools. weave-mcp exposes 9 tools over stdio transport. Add it to Claude Code, Claude Desktop, or any MCP-compatible client.
+        <a href="https://modelcontextprotocol.io" style="color:var(--cyan)">MCP</a> (Model Context Protocol) lets AI agents call tools. weave-mcp exposes 15 tools over stdio transport. Add it to Claude Code, Claude Desktop, or any MCP-compatible client.
       </p>
 
       <h3 style="font-size: 16px; color: var(--accent); margin: 0 0 16px;">Setup</h3>
@@ -333,6 +333,14 @@
         <div class="tool-card" style="border-color: var(--cyan);">
           <div class="tool-name">weave_impact_analysis</div>
           <div class="tool-desc">Transitive blast radius if an entity changes. BFS through dependency graph. Input: <code>{file_path, entity_name}</code></div>
+        </div>
+        <div class="tool-card" style="border-color: var(--green);">
+          <div class="tool-name">weave_diff</div>
+          <div class="tool-desc">Entity-level semantic diff between two refs. Shows added, modified, deleted, renamed entities. Input: <code>{base_ref, target_ref?, file_path?}</code></div>
+        </div>
+        <div class="tool-card" style="border-color: var(--yellow);">
+          <div class="tool-name">weave_merge_summary</div>
+          <div class="tool-desc">Parse weave conflict markers into structured JSON. Entity names, conflict types, confidence, resolution hints. Input: <code>{file_path}</code></div>
         </div>
       </div>
 

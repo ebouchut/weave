@@ -91,7 +91,7 @@
         <div class="phase-card" style="border-color: var(--cyan);">
           <div class="tag" style="background: #22d3ee22; color: var(--cyan);">PHASE 3</div>
           <h3>MCP Server</h3>
-          <p>9 tools exposed via Model Context Protocol. Claude and other AI agents call them directly to coordinate work.</p>
+          <p>15 tools exposed via Model Context Protocol. Claude and other AI agents call them directly to coordinate work.</p>
         </div>
       </div>
     </section>
@@ -99,13 +99,14 @@
     <!-- weave vs git -->
     <section>
       <h2>weave vs git merge</h2>
-      <p class="section-desc">git merges lines. weave merges entities. <a href="learn.html" style="color:var(--cyan)">Read the full deep dive &rarr;</a></p>
+      <p class="section-desc">git merges lines. mergiraf merges tree nodes. weave merges entities. <a href="learn.html" style="color:var(--cyan)">Read the full deep dive &rarr;</a></p>
       <div class="comparison-table">
         <table>
           <thead>
             <tr>
               <th>Scenario</th>
               <th>git merge</th>
+              <th>mergiraf</th>
               <th>weave merge</th>
             </tr>
           </thead>
@@ -114,36 +115,43 @@
               <td>Two agents edit different functions</td>
               <td class="lose">CONFLICT (adjacent lines)</td>
               <td class="win">auto-resolved</td>
+              <td class="win">auto-resolved</td>
             </tr>
             <tr>
               <td>One adds function, one modifies another</td>
               <td class="lose">often conflicts</td>
               <td class="win">auto-resolved</td>
+              <td class="win">auto-resolved</td>
             </tr>
             <tr>
               <td>Both modify the same function identically</td>
               <td class="lose">CONFLICT</td>
+              <td class="win">auto-resolved</td>
               <td class="win">detected as identical, uses either</td>
             </tr>
             <tr>
               <td>Both modify the same function differently</td>
+              <td class="lose">CONFLICT</td>
               <td class="lose">CONFLICT</td>
               <td style="color:var(--yellow)">attempts 3-way merge on entity body</td>
             </tr>
             <tr>
               <td>One deletes, one modifies</td>
               <td class="lose">silent data loss possible</td>
+              <td style="color:var(--yellow)">depends on context</td>
               <td class="win">modify/delete conflict reported</td>
             </tr>
             <tr>
-              <td>JSON: different keys modified</td>
-              <td class="lose">lines</td>
-              <td class="win">entity-level, no false conflicts</td>
+              <td>Both add functions at same position</td>
+              <td class="lose">CONFLICT</td>
+              <td class="lose">CONFLICT</td>
+              <td class="win">auto-resolved (unordered entities)</td>
             </tr>
             <tr>
-              <td>Python: two new functions added</td>
-              <td class="lose">CONFLICT (same region)</td>
-              <td class="win">auto-resolved</td>
+              <td>Python: both add decorators to function</td>
+              <td class="lose">CONFLICT</td>
+              <td class="lose">CONFLICT</td>
+              <td class="win">auto-resolved (decorator bundling)</td>
             </tr>
           </tbody>
         </table>
@@ -153,212 +161,56 @@
     <!-- Benchmark Results -->
     <section>
       <h2>Benchmark results</h2>
-      <p class="section-desc">Run <code style="background:var(--surface);padding:2px 6px;border-radius:3px;font-size:12px;">weave bench</code> to reproduce. 16 merge scenarios, release build on Apple Silicon.</p>
+      <p class="section-desc">Run <code style="background:var(--surface);padding:2px 6px;border-radius:3px;font-size:12px;">weave bench</code> to reproduce. 31 merge scenarios across 7 languages, release build on Apple Silicon.</p>
       <div class="comparison-table">
         <table>
           <thead>
             <tr>
               <th>Scenario</th>
               <th>weave</th>
-              <th>git (diffy)</th>
-              <th>Result</th>
+              <th>mergiraf</th>
+              <th>git</th>
             </tr>
           </thead>
           <tbody>
-            <tr>
-              <td>Different functions modified</td>
-              <td class="win">clean (1.9ms)</td>
-              <td class="win">clean (29us)</td>
-              <td>both clean</td>
-            </tr>
-            <tr>
-              <td>Different class methods modified</td>
-              <td class="win">clean (694us)</td>
-              <td class="win">clean (10us)</td>
-              <td>both clean</td>
-            </tr>
-            <tr>
-              <td>Both add different imports (TS)</td>
-              <td class="win">clean (131us)</td>
-              <td class="lose">CONFLICT</td>
-              <td style="color:var(--green);font-weight:600">WEAVE WINS</td>
-            </tr>
-            <tr>
-              <td>Class: different methods among 4</td>
-              <td class="win">clean (538us)</td>
-              <td class="win">clean (9us)</td>
-              <td>both clean</td>
-            </tr>
-            <tr>
-              <td>One adds, other modifies</td>
-              <td class="win">clean (73us)</td>
-              <td class="win">clean (5us)</td>
-              <td>both clean</td>
-            </tr>
-            <tr>
-              <td>Adjacent function changes</td>
-              <td class="win">clean (77us)</td>
-              <td class="win">clean (4us)</td>
-              <td>both clean</td>
-            </tr>
-            <tr>
-              <td>Python: different class methods</td>
-              <td class="win">clean (851us)</td>
-              <td class="win">clean (6us)</td>
-              <td>both clean</td>
-            </tr>
-            <tr>
-              <td>Python: adjacent methods (4-method class)</td>
-              <td class="win">clean (562us)</td>
-              <td class="win">clean (8us)</td>
-              <td>both clean</td>
-            </tr>
-            <tr>
-              <td>Both add exports at end of file</td>
-              <td class="win">clean (128us)</td>
-              <td class="lose">CONFLICT</td>
-              <td style="color:var(--green);font-weight:600">WEAVE WINS</td>
-            </tr>
-            <tr>
-              <td>Reformat vs modify (whitespace-aware)</td>
-              <td class="win">clean (134us)</td>
-              <td class="lose">CONFLICT</td>
-              <td style="color:var(--green);font-weight:600">WEAVE WINS</td>
-            </tr>
-            <tr>
-              <td>Both add functions at end of file</td>
-              <td class="win">clean (69us)</td>
-              <td class="lose">CONFLICT</td>
-              <td style="color:var(--green);font-weight:600">WEAVE WINS</td>
-            </tr>
-            <tr>
-              <td>Both add methods to class at end</td>
-              <td class="win">clean (215us)</td>
-              <td class="lose">CONFLICT</td>
-              <td style="color:var(--green);font-weight:600">WEAVE WINS</td>
-            </tr>
-            <tr>
-              <td>Rust: both add different use statements</td>
-              <td class="win">clean (577us)</td>
-              <td class="lose">CONFLICT</td>
-              <td style="color:var(--green);font-weight:600">WEAVE WINS</td>
-            </tr>
-            <tr>
-              <td>Python: both add different imports</td>
-              <td class="win">clean (113us)</td>
-              <td class="lose">CONFLICT</td>
-              <td style="color:var(--green);font-weight:600">WEAVE WINS</td>
-            </tr>
-            <tr>
-              <td>Class: modify method + add new</td>
-              <td class="win">clean (358us)</td>
-              <td class="win">clean (6us)</td>
-              <td>both clean</td>
-            </tr>
-            <tr>
-              <td>Both add functions between existing</td>
-              <td class="win">clean (94us)</td>
-              <td class="lose">CONFLICT</td>
-              <td style="color:var(--green);font-weight:600">WEAVE WINS</td>
-            </tr>
-            <tr>
-              <td>Python: both add different decorators</td>
-              <td class="win">clean (645us)</td>
-              <td class="lose">CONFLICT</td>
-              <td style="color:var(--green);font-weight:600">WEAVE WINS</td>
-            </tr>
-            <tr>
-              <td>Decorator + body change</td>
-              <td class="win">clean (644us)</td>
-              <td class="win">clean (21us)</td>
-              <td>both clean</td>
-            </tr>
-            <tr>
-              <td>TS: class method decorators</td>
-              <td class="win">clean (933us)</td>
-              <td class="lose">CONFLICT</td>
-              <td style="color:var(--green);font-weight:600">WEAVE WINS</td>
-            </tr>
-            <tr>
-              <td>TS: interface field additions</td>
-              <td class="win">clean (750us)</td>
-              <td class="lose">CONFLICT</td>
-              <td style="color:var(--green);font-weight:600">WEAVE WINS</td>
-            </tr>
-            <tr>
-              <td>Rust: enum variant additions</td>
-              <td class="win">clean (658us)</td>
-              <td class="lose">CONFLICT</td>
-              <td style="color:var(--green);font-weight:600">WEAVE WINS</td>
-            </tr>
-            <tr>
-              <td>Java: different methods in same class</td>
-              <td class="win">clean (1658us)</td>
-              <td class="win">clean (51us)</td>
-              <td>both clean</td>
-            </tr>
-            <tr>
-              <td>Java: both add annotations</td>
-              <td class="win">clean (1064us)</td>
-              <td class="lose">CONFLICT</td>
-              <td style="color:var(--green);font-weight:600">WEAVE WINS</td>
-            </tr>
-            <tr>
-              <td>C: different functions modified</td>
-              <td class="win">clean (1000us)</td>
-              <td class="win">clean (24us)</td>
-              <td>both clean</td>
-            </tr>
-            <tr>
-              <td>TS: method reorder + modification</td>
-              <td class="win">clean (1070us)</td>
-              <td class="win">clean (39us)</td>
-              <td>both clean</td>
-            </tr>
-            <tr>
-              <td>Python: both add class methods</td>
-              <td class="win">clean (857us)</td>
-              <td class="lose">CONFLICT</td>
-              <td class="weave-wins">WEAVE WINS</td>
-            </tr>
-            <tr>
-              <td>Rust: both add impl methods</td>
-              <td class="win">clean (1116us)</td>
-              <td class="lose">CONFLICT</td>
-              <td class="weave-wins">WEAVE WINS</td>
-            </tr>
-            <tr>
-              <td>TS: enum modify + add variant</td>
-              <td class="win">clean (492us)</td>
-              <td class="win">clean (18us)</td>
-              <td>both clean</td>
-            </tr>
-            <tr>
-              <td>TS: add JSDoc + modify body</td>
-              <td class="win">clean (344us)</td>
-              <td class="win">clean (22us)</td>
-              <td>both clean</td>
-            </tr>
-            <tr>
-              <td>Rust: both add doc comments to different fns</td>
-              <td class="win">clean (429us)</td>
-              <td class="win">clean (21us)</td>
-              <td>both clean</td>
-            </tr>
-            <tr>
-              <td>Go: both add different functions</td>
-              <td class="win">clean (676us)</td>
-              <td class="lose">CONFLICT</td>
-              <td class="weave-wins">WEAVE WINS</td>
-            </tr>
+            <tr><td>Different functions modified</td><td class="win">clean</td><td class="win">clean</td><td class="win">clean</td></tr>
+            <tr><td>Different class methods modified</td><td class="win">clean</td><td class="win">clean</td><td class="win">clean</td></tr>
+            <tr><td>Both add different imports (TS)</td><td class="win">clean</td><td class="win">clean</td><td class="lose">CONFLICT</td></tr>
+            <tr><td>Class: different methods among 4</td><td class="win">clean</td><td class="win">clean</td><td class="win">clean</td></tr>
+            <tr><td>One adds, other modifies</td><td class="win">clean</td><td class="win">clean</td><td class="win">clean</td></tr>
+            <tr><td>Adjacent function changes</td><td class="win">clean</td><td class="win">clean</td><td class="win">clean</td></tr>
+            <tr><td>Python: different class methods</td><td class="win">clean</td><td class="win">clean</td><td class="win">clean</td></tr>
+            <tr><td>Python: adjacent methods (4-method class)</td><td class="win">clean</td><td class="win">clean</td><td class="win">clean</td></tr>
+            <tr><td>Both add exports at end of file</td><td class="win">clean</td><td class="lose">CONFLICT</td><td class="lose">CONFLICT</td></tr>
+            <tr><td>Reformat vs modify (whitespace-aware)</td><td class="win">clean</td><td class="win">clean</td><td class="lose">CONFLICT</td></tr>
+            <tr><td>Both add functions at end of file</td><td class="win">clean</td><td class="lose">CONFLICT</td><td class="lose">CONFLICT</td></tr>
+            <tr><td>Both add methods to class at end</td><td class="win">clean</td><td class="win">clean</td><td class="lose">CONFLICT</td></tr>
+            <tr><td>Rust: both add different use statements</td><td class="win">clean</td><td class="win">clean</td><td class="lose">CONFLICT</td></tr>
+            <tr><td>Python: both add different imports</td><td class="win">clean</td><td class="win">clean</td><td class="lose">CONFLICT</td></tr>
+            <tr><td>Class: modify method + add new</td><td class="win">clean</td><td class="win">clean</td><td class="win">clean</td></tr>
+            <tr><td>Both add functions between existing</td><td class="win">clean</td><td class="lose">CONFLICT</td><td class="lose">CONFLICT</td></tr>
+            <tr><td>Python: both add different decorators</td><td class="win">clean</td><td class="lose">CONFLICT</td><td class="lose">CONFLICT</td></tr>
+            <tr><td>Decorator + body change</td><td class="win">clean</td><td class="win">clean</td><td class="win">clean</td></tr>
+            <tr><td>TS: class method decorators</td><td class="win">clean</td><td class="lose">CONFLICT</td><td class="lose">CONFLICT</td></tr>
+            <tr><td>TS: interface field additions</td><td class="win">clean</td><td class="win">clean</td><td class="lose">CONFLICT</td></tr>
+            <tr><td>Rust: enum variant additions</td><td class="win">clean</td><td class="win">clean</td><td class="lose">CONFLICT</td></tr>
+            <tr><td>Java: different methods in same class</td><td class="win">clean</td><td class="win">clean</td><td class="win">clean</td></tr>
+            <tr><td>Java: both add annotations</td><td class="win">clean</td><td class="win">clean</td><td class="lose">CONFLICT</td></tr>
+            <tr><td>C: different functions modified</td><td class="win">clean</td><td class="win">clean</td><td class="win">clean</td></tr>
+            <tr><td>TS: method reorder + modification</td><td class="win">clean</td><td class="win">clean</td><td class="win">clean</td></tr>
+            <tr><td>Python: both add class methods</td><td class="win">clean</td><td class="win">clean</td><td class="lose">CONFLICT</td></tr>
+            <tr><td>Rust: both add impl methods</td><td class="win">clean</td><td class="win">clean</td><td class="lose">CONFLICT</td></tr>
+            <tr><td>TS: enum modify + add variant</td><td class="win">clean</td><td class="win">clean</td><td class="win">clean</td></tr>
+            <tr><td>TS: add JSDoc + modify body</td><td class="win">clean</td><td class="win">clean</td><td class="win">clean</td></tr>
+            <tr><td>Rust: both add doc comments to different fns</td><td class="win">clean</td><td class="win">clean</td><td class="win">clean</td></tr>
+            <tr><td>Go: both add different functions</td><td class="win">clean</td><td class="win">clean</td><td class="lose">CONFLICT</td></tr>
           </tbody>
         </table>
       </div>
       <p style="font-size:13px;color:var(--dim);margin-top:16px;line-height:1.7;">
-        <strong style="color:var(--accent)">weave: 31/31 clean (100%)</strong> vs <strong style="color:var(--dim)">git: 15/31 clean (48%)</strong>.
-        Git cannot resolve 16 of the 31 scenarios. Weave resolves all of them using entity-level merging,
-        commutative import merge, inner entity decomposition, decorator-aware merge, and whitespace-aware conflict avoidance.
-        Every false conflict that git reports, weave handles automatically.
+        <strong style="color:var(--accent)">weave: 31/31 clean (100%)</strong> vs <strong style="color:var(--dim)">mergiraf: 26/31 (83%)</strong> vs <strong style="color:var(--dim)">git: 15/31 (48%)</strong>.
+        Mergiraf (v0.16.3) resolves most structural conflicts but fails on both-add-at-same-position, insert-in-middle, and decorator conflicts.
+        Weave resolves all 31 using entity-level merging, unordered member sets, commutative imports, decorator bundling, and inner entity decomposition.
       </p>
     </section>
 
@@ -378,6 +230,10 @@
           <tr><td>Rust</td><td>.rs</td><td>functions, structs, enums, impls, traits</td></tr>
           <tr><td>Java</td><td>.java</td><td>classes, methods, interfaces, enums, fields</td></tr>
           <tr><td>C</td><td>.c .h</td><td>functions, structs, enums, unions, typedefs</td></tr>
+          <tr><td>C++</td><td>.cpp .cc .cxx .hpp .hh .hxx</td><td>functions, classes, structs, enums, namespaces, templates</td></tr>
+          <tr><td>Ruby</td><td>.rb</td><td>methods, classes, modules</td></tr>
+          <tr><td>C#</td><td>.cs</td><td>methods, classes, interfaces, enums, structs, namespaces</td></tr>
+          <tr><td>Fortran</td><td>.f90 .f95 .f03 .f08 .f .for</td><td>functions, subroutines, modules, programs, interfaces</td></tr>
           <tr><td>JSON</td><td>.json</td><td>properties, objects</td></tr>
           <tr><td>YAML</td><td>.yml .yaml</td><td>sections, properties</td></tr>
           <tr><td>TOML</td><td>.toml</td><td>sections, properties</td></tr>
