@@ -49,11 +49,16 @@ export default function Home() {
           <h2 className="text-3xl font-bold mb-8" style={{ fontFamily: "var(--font-heading)" }}>
             Benchmark: 31 Real-World Merge Scenarios
           </h2>
-          <div className="grid md:grid-cols-2 gap-8 mb-8">
+          <div className="grid md:grid-cols-3 gap-8 mb-8">
             <div className="border border-white/10 rounded-lg p-8">
               <p className="text-sm text-gray-500 uppercase tracking-wider mb-2" style={{ fontFamily: "var(--font-heading)" }}>Git merge</p>
               <p className="text-5xl font-bold text-gray-500" style={{ fontFamily: "var(--font-heading)" }}>15/31</p>
               <p className="text-gray-500 mt-2">48% clean</p>
+            </div>
+            <div className="border border-white/10 rounded-lg p-8">
+              <p className="text-sm text-gray-500 uppercase tracking-wider mb-2" style={{ fontFamily: "var(--font-heading)" }}>Mergiraf</p>
+              <p className="text-5xl font-bold text-gray-400" style={{ fontFamily: "var(--font-heading)" }}>26/31</p>
+              <p className="text-gray-400 mt-2">83% clean</p>
             </div>
             <div className="border border-white/20 rounded-lg p-8 bg-white/[0.02]">
               <p className="text-sm text-gray-400 uppercase tracking-wider mb-2" style={{ fontFamily: "var(--font-heading)" }}>Weave</p>
@@ -62,7 +67,7 @@ export default function Home() {
             </div>
           </div>
           <p className="text-gray-500 text-sm">
-            Scenarios include adjacent function edits, import conflicts, class member additions, renames, and decorator changes across Python, TypeScript, Rust, Go, and Java.
+            Scenarios include adjacent function edits, import conflicts, class member additions, renames, and decorator changes across Python, TypeScript, Rust, Go, Java, and C. Mergiraf (v0.16.3) fails on both-add-at-end, insert-in-middle, and decorator conflict scenarios.
           </p>
         </div>
       </section>
@@ -77,7 +82,7 @@ export default function Home() {
             <div>
               <h3 className="text-lg font-semibold mb-3" style={{ fontFamily: "var(--font-heading)" }}>1. Parse with tree-sitter</h3>
               <p className="text-gray-400 leading-relaxed">
-                All three versions (base, ours, theirs) are parsed into entity lists: functions, classes, methods, imports, constants, and types. 11 languages supported.
+                All three versions (base, ours, theirs) are parsed into entity lists: functions, classes, methods, imports, constants, and types. 12 languages supported.
               </p>
             </div>
             <div>
@@ -110,9 +115,9 @@ export default function Home() {
           </h2>
           <div className="grid md:grid-cols-3 gap-8">
             <div className="border border-white/10 rounded-lg p-6">
-              <h3 className="text-base font-semibold mb-3" style={{ fontFamily: "var(--font-heading)" }}>11 Languages</h3>
+              <h3 className="text-base font-semibold mb-3" style={{ fontFamily: "var(--font-heading)" }}>12 Languages</h3>
               <p className="text-gray-400 text-sm leading-relaxed">
-                TypeScript, TSX, JavaScript, Python, Go, Rust, Java, C, C++, Ruby, C#. Each with language-specific entity extraction.
+                TypeScript, TSX, JavaScript, Python, Go, Rust, Java, C, C++, Ruby, C#, Fortran. Each with language-specific entity extraction.
               </p>
             </div>
             <div className="border border-white/10 rounded-lg p-6">
