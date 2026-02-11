@@ -1260,7 +1260,7 @@ checksum = "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49"
 [[package]]
 name = "sem-core"
 version = "0.2.0"
-source = "git+https://github.com/Ataraxy-Labs/sem#e1d2fb0850911a3c6902c56b0048c9f9dd1d1388"
+source = "git+https://github.com/Ataraxy-Labs/sem#d130992333af2bad4a6d5b49922708dbb6cf3939"
 dependencies = [
  "git2",
  "regex",
@@ -1272,10 +1272,14 @@ dependencies = [
  "toml",
  "tree-sitter",
  "tree-sitter-c",
+ "tree-sitter-c-sharp",
+ "tree-sitter-cpp",
+ "tree-sitter-fortran",
  "tree-sitter-go",
  "tree-sitter-java",
  "tree-sitter-javascript",
  "tree-sitter-python",
+ "tree-sitter-ruby",
  "tree-sitter-rust",
  "tree-sitter-typescript",
 ]
@@ -1733,6 +1737,36 @@ dependencies = [
 ]
 
 [[package]]
+name = "tree-sitter-c-sharp"
+version = "0.23.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "67f06accca7b45351758663b8215089e643d53bd9a660ce0349314263737fcb0"
+dependencies = [
+ "cc",
+ "tree-sitter-language",
+]
+
+[[package]]
+name = "tree-sitter-cpp"
+version = "0.23.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "df2196ea9d47b4ab4a31b9297eaa5a5d19a0b121dceb9f118f6790ad0ab94743"
+dependencies = [
+ "cc",
+ "tree-sitter-language",
+]
+
+[[package]]
+name = "tree-sitter-fortran"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ce58ab374a2cc3a2ff8a5dab2e5230530dbfcb439475afa75233f59d1d115b40"
+dependencies = [
+ "cc",
+ "tree-sitter-language",
+]
+
+[[package]]
 name = "tree-sitter-go"
 version = "0.23.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1773,6 +1807,16 @@ name = "tree-sitter-python"
 version = "0.23.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3d065aaa27f3aaceaf60c1f0e0ac09e1cb9eb8ed28e7bcdaa52129cffc7f4b04"
+dependencies = [
+ "cc",
+ "tree-sitter-language",
+]
+
+[[package]]
+name = "tree-sitter-ruby"
+version = "0.23.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "be0484ea4ef6bb9c575b4fdabde7e31340a8d2dbc7d52b321ac83da703249f95"
 dependencies = [
  "cc",
  "tree-sitter-language",
@@ -1938,7 +1982,7 @@ dependencies = [
 
 [[package]]
 name = "weave-cli"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "clap",
  "colored",
@@ -1951,7 +1995,7 @@ dependencies = [
 
 [[package]]
 name = "weave-core"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "diffy",
  "pretty_assertions",
@@ -1962,7 +2006,7 @@ dependencies = [
 
 [[package]]
 name = "weave-crdt"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "automerge",
  "sem-core",
@@ -1975,7 +2019,7 @@ dependencies = [
 
 [[package]]
 name = "weave-driver"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "env_logger",
  "log",
@@ -1986,7 +2030,7 @@ dependencies = [
 
 [[package]]
 name = "weave-mcp"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "rmcp",
  "schemars",
