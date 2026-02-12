@@ -33,7 +33,7 @@ weave setup
 
 ## Key Features
 
-- 12 languages: TypeScript, TSX, JavaScript, Python, Go, Rust, Java, C, C++, Ruby, C#, Fortran
+- 13 languages: TypeScript, TSX, JavaScript, Python, Go, Rust, Java, C, C++, Ruby, C#, PHP, Fortran
 - Rename detection via AST-normalized structural hashing
 - Commutative import merge (imports treated as sets, unioned and deduplicated)
 - Unordered class members (methods added at same position resolve cleanly)

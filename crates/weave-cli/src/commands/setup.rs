@@ -6,6 +6,9 @@ use colored::Colorize;
 
 const SUPPORTED_EXTENSIONS: &[&str] = &[
     "*.ts", "*.tsx", "*.js", "*.jsx", "*.py", "*.go", "*.rs",
+    "*.java", "*.c", "*.h", "*.cpp", "*.cc", "*.cxx", "*.hpp", "*.hh", "*.hxx",
+    "*.rb", "*.cs", "*.php",
+    "*.f90", "*.f95", "*.f03", "*.f08",
     "*.json", "*.yaml", "*.yml", "*.toml", "*.md",
 ];
 
