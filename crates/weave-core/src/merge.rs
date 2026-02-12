@@ -212,7 +212,58 @@ pub fn entity_merge_with_registry(
     let mut conflicts: Vec<EntityConflict> = Vec::new();
     let mut resolved_entities: HashMap<String, ResolvedEntity> = HashMap::new();
 
+    // Detect rename/rename conflicts: same base entity renamed differently in both branches.
+    // These must be flagged before the entity resolution loop, which would otherwise silently
+    // pick ours and also include theirs as an unmatched entity.
+    let mut rename_conflict_ids: HashSet<String> = HashSet::new();
+    for (base_id, ours_new_id) in &base_to_ours_rename {
+        if let Some(theirs_new_id) = base_to_theirs_rename.get(base_id) {
+            if ours_new_id != theirs_new_id {
+                rename_conflict_ids.insert(base_id.clone());
+            }
+        }
+    }
+
     for entity_id in &all_entity_ids {
+        // Handle rename/rename conflicts: both branches renamed this base entity differently
+        if rename_conflict_ids.contains(entity_id) {
+            let ours_new_id = &base_to_ours_rename[entity_id];
+            let theirs_new_id = &base_to_theirs_rename[entity_id];
+            let base_entity = base_entity_map.get(entity_id.as_str());
+            let ours_entity = ours_entity_map.get(ours_new_id.as_str());
+            let theirs_entity = theirs_entity_map.get(theirs_new_id.as_str());
+            let base_name = base_entity.map(|e| e.name.as_str()).unwrap_or(entity_id);
+            let ours_name = ours_entity.map(|e| e.name.as_str()).unwrap_or(ours_new_id);
+            let theirs_name = theirs_entity.map(|e| e.name.as_str()).unwrap_or(theirs_new_id);
+
+            let base_rc = base_entity.map(|e| base_region_content.get(&e.id).cloned().unwrap_or_else(|| e.content.clone()));
+            let ours_rc = ours_entity.map(|e| ours_region_content.get(&e.id).cloned().unwrap_or_else(|| e.content.clone()));
+            let theirs_rc = theirs_entity.map(|e| theirs_region_content.get(&e.id).cloned().unwrap_or_else(|| e.content.clone()));
+
+            stats.entities_conflicted += 1;
+            let conflict = EntityConflict {
+                entity_name: base_name.to_string(),
+                entity_type: base_entity.map(|e| e.entity_type.clone()).unwrap_or_default(),
+                kind: ConflictKind::RenameRename {
+                    base_name: base_name.to_string(),
+                    ours_name: ours_name.to_string(),
+                    theirs_name: theirs_name.to_string(),
+                },
+                complexity: crate::conflict::ConflictComplexity::Syntax,
+                ours_content: ours_rc,
+                theirs_content: theirs_rc,
+                base_content: base_rc,
+            };
+            conflicts.push(conflict.clone());
+            let resolution = ResolvedEntity::Conflict(conflict);
+            resolved_entities.insert(entity_id.clone(), resolution.clone());
+            resolved_entities.insert(ours_new_id.clone(), resolution);
+            // Mark theirs renamed ID as Deleted so reconstruct doesn't emit the conflict twice
+            // (once from ours skeleton, once from theirs-only insertion)
+            resolved_entities.insert(theirs_new_id.clone(), ResolvedEntity::Deleted);
+            continue;
+        }
+
         let in_base = base_entity_map.get(entity_id.as_str());
         // Follow rename chains: if base entity was renamed in ours/theirs, use renamed version
         let ours_id = base_to_ours_rename.get(entity_id.as_str()).map(|s| s.as_str()).unwrap_or(entity_id.as_str());
@@ -970,26 +1021,82 @@ fn filter_nested_entities(entities: Vec<SemanticEntity>) -> Vec<SemanticEntity> 
         .collect()
 }
 
-/// Build a rename map from new_id → base_id using structural_hash matching.
+/// Compute a body hash for rename detection: the entity content with the entity
+/// name replaced at word boundaries by a placeholder, so entities with identical
+/// bodies but different names produce the same hash.
 ///
-/// Detects when an entity in the branch has the same structural_hash as an entity
-/// in base but a different ID — indicating it was renamed.
+/// Uses word-boundary matching to avoid partial replacements (e.g. replacing
+/// "get" inside "getAll"). Works across all languages since it operates on
+/// the content string, not language-specific AST features.
+fn body_hash(entity: &SemanticEntity) -> String {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+    let normalized = replace_at_word_boundaries(&entity.content, &entity.name, "__ENTITY__");
+    let mut hasher = DefaultHasher::new();
+    normalized.hash(&mut hasher);
+    format!("{:016x}", hasher.finish())
+}
+
+/// Replace `needle` with `replacement` only at word boundaries.
+/// A word boundary means the character before/after the match is not
+/// alphanumeric or underscore (i.e. not an identifier character).
+fn replace_at_word_boundaries(content: &str, needle: &str, replacement: &str) -> String {
+    if needle.is_empty() {
+        return content.to_string();
+    }
+    let bytes = content.as_bytes();
+    let mut result = String::with_capacity(content.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if content[i..].starts_with(needle) {
+            let before_ok = i == 0 || !is_ident_char(bytes[i - 1]);
+            let after_idx = i + needle.len();
+            let after_ok = after_idx >= bytes.len() || !is_ident_char(bytes[after_idx]);
+            if before_ok && after_ok {
+                result.push_str(replacement);
+                i += needle.len();
+                continue;
+            }
+        }
+        result.push(bytes[i] as char);
+        i += 1;
+    }
+    result
+}
+
+fn is_ident_char(b: u8) -> bool {
+    b.is_ascii_alphanumeric() || b == b'_'
+}
+
+/// Build a rename map from new_id → base_id using body hash matching.
+///
+/// Detects when an entity in the branch has the same body as an entity
+/// in base but a different name/ID, indicating it was renamed.
+/// Uses body_hash (name-stripped content hash) instead of structural_hash
+/// so that pure renames (same body, different name) are detected.
 fn build_rename_map(
     base_entities: &[SemanticEntity],
     branch_entities: &[SemanticEntity],
 ) -> HashMap<String, String> {
     let mut rename_map: HashMap<String, String> = HashMap::new();
 
-    // Build structural_hash → entity map for base
-    let mut base_by_structural: HashMap<&str, &SemanticEntity> = HashMap::new();
+    // Build body_hash → entity map for base
+    let mut base_by_body: HashMap<String, &SemanticEntity> = HashMap::new();
     let base_ids: HashSet<&str> = base_entities.iter().map(|e| e.id.as_str()).collect();
+    for entity in base_entities {
+        base_by_body.insert(body_hash(entity), entity);
+    }
+
+    // Also keep structural_hash index as fallback (for cases where name doesn't
+    // appear literally in content, e.g. some generated entities)
+    let mut base_by_structural: HashMap<&str, &SemanticEntity> = HashMap::new();
     for entity in base_entities {
         if let Some(ref sh) = entity.structural_hash {
             base_by_structural.insert(sh.as_str(), entity);
         }
     }
 
-    // Find branch entities that aren't in base by ID but match by structural_hash
+    // Find branch entities that aren't in base by ID but match by body hash or structural_hash
     let mut used_base_ids: HashSet<String> = HashSet::new();
     for branch_entity in branch_entities {
         // Skip entities that exist in base by ID (not renamed)
@@ -997,18 +1104,23 @@ fn build_rename_map(
             continue;
         }
 
-        // Check if this branch entity matches a base entity by structural_hash
-        if let Some(ref sh) = branch_entity.structural_hash {
-            if let Some(base_entity) = base_by_structural.get(sh.as_str()) {
-                // Only if the base entity wasn't also found in branch by ID
-                // (prevents matching when both old and new exist)
-                if !used_base_ids.contains(&base_entity.id) {
-                    // Also verify the base entity isn't in the branch (by ID) — it was actually removed
-                    let base_id_in_branch = branch_entities.iter().any(|e| e.id == base_entity.id);
-                    if !base_id_in_branch {
-                        rename_map.insert(branch_entity.id.clone(), base_entity.id.clone());
-                        used_base_ids.insert(base_entity.id.clone());
-                    }
+        // Try body hash match first (handles pure renames)
+        let bh = body_hash(branch_entity);
+        let matched_base = if let Some(base_entity) = base_by_body.get(&bh) {
+            Some(*base_entity)
+        } else if let Some(ref sh) = branch_entity.structural_hash {
+            // Fallback to structural_hash (original behavior)
+            base_by_structural.get(sh.as_str()).copied()
+        } else {
+            None
+        };
+
+        if let Some(base_entity) = matched_base {
+            if !used_base_ids.contains(&base_entity.id) {
+                let base_id_in_branch = branch_entities.iter().any(|e| e.id == base_entity.id);
+                if !base_id_in_branch {
+                    rename_map.insert(branch_entity.id.clone(), base_entity.id.clone());
+                    used_base_ids.insert(base_entity.id.clone());
                 }
             }
         }
@@ -1506,6 +1618,25 @@ fn collapse_separators(merged: &str, _base: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_replace_at_word_boundaries() {
+        // Should replace standalone occurrences
+        assert_eq!(replace_at_word_boundaries("fn get() {}", "get", "__E__"), "fn __E__() {}");
+        // Should NOT replace inside longer identifiers
+        assert_eq!(replace_at_word_boundaries("fn getAll() {}", "get", "__E__"), "fn getAll() {}");
+        assert_eq!(replace_at_word_boundaries("fn _get() {}", "get", "__E__"), "fn _get() {}");
+        // Should replace multiple standalone occurrences
+        assert_eq!(
+            replace_at_word_boundaries("pub enum Source { Source }", "Source", "__E__"),
+            "pub enum __E__ { __E__ }"
+        );
+        // Should not replace substring at start/end of identifiers
+        assert_eq!(
+            replace_at_word_boundaries("SourceManager isSource", "Source", "__E__"),
+            "SourceManager isSource"
+        );
+    }
 
     #[test]
     fn test_fast_path_identical() {

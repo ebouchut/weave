@@ -1076,3 +1076,44 @@ fn ts_enum_modify_variant_plus_add_variant_auto_resolves() {
     assert!(result.content.contains("\"disabled\""), "Should have modified variant");
     assert!(result.content.contains("Deleted"), "Should have new variant");
 }
+
+// =============================================================================
+// Rename/rename conflict: both branches rename the same entity to different names
+// =============================================================================
+
+#[test]
+fn rust_rename_rename_conflict_detected() {
+    let base = r#"#[derive(Debug, Clone)]
+pub enum Source {
+    Api,
+    File,
+    Manual,
+}
+"#;
+    let ours = r#"#[derive(Debug, Clone)]
+pub enum Source1 {
+    Api,
+    File,
+    Manual,
+}
+"#;
+    let theirs = r#"#[derive(Debug, Clone)]
+pub enum BSource {
+    Api,
+    File,
+    Manual,
+}
+"#;
+    let result = entity_merge(base, ours, theirs, "types.rs");
+    assert!(
+        !result.is_clean(),
+        "Both branches renaming the same entity should be a conflict, not silently keep both"
+    );
+    assert_eq!(result.conflicts.len(), 1);
+    let conflict = &result.conflicts[0];
+    assert!(
+        format!("{}", conflict.kind).contains("both renamed"),
+        "Should be a rename/rename conflict, got: {}",
+        conflict.kind
+    );
+}

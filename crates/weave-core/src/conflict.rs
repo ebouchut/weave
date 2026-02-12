@@ -9,6 +9,12 @@ pub enum ConflictKind {
     ModifyDelete { modified_in_ours: bool },
     /// Both branches added an entity with the same ID but different content.
     BothAdded,
+    /// Both branches renamed the same entity to different names.
+    RenameRename {
+        base_name: String,
+        ours_name: String,
+        theirs_name: String,
+    },
 }
 
 impl fmt::Display for ConflictKind {
@@ -22,6 +28,9 @@ impl fmt::Display for ConflictKind {
                 modified_in_ours: false,
             } => write!(f, "deleted in ours, modified in theirs"),
             ConflictKind::BothAdded => write!(f, "both added"),
+            ConflictKind::RenameRename { base_name, ours_name, theirs_name } => {
+                write!(f, "both renamed: '{}' → ours '{}', theirs '{}'", base_name, ours_name, theirs_name)
+            }
         }
     }
 }
