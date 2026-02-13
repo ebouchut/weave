@@ -314,6 +314,9 @@ pub fn entity_merge_with_registry(
         &merged_interstitials,
     );
 
+    // Post-merge cleanup: remove duplicate lines and normalize blank lines
+    let content = post_merge_cleanup(&content);
+
     // Post-merge parse validation: verify the merged result still parses correctly
     // (MergeBot-inspired safety check — catch syntactically broken merges)
     let mut warnings = vec![];
@@ -815,6 +818,56 @@ fn is_import_region(content: &str) -> bool {
     import_count * 2 > lines.len()
 }
 
+/// Post-merge cleanup: remove consecutive duplicate lines and normalize blank lines.
+///
+/// Fixes two classes of merge artifacts:
+/// 1. Duplicate lines/blocks that appear when both sides add the same content
+///    (e.g. duplicate typedefs, forward declarations)
+/// 2. Missing blank lines between entities or declarations, and excessive
+///    blank lines (3+ consecutive) collapsed to 2
+fn post_merge_cleanup(content: &str) -> String {
+    let lines: Vec<&str> = content.lines().collect();
+    let mut result: Vec<&str> = Vec::with_capacity(lines.len());
+
+    // Pass 1: Remove consecutive duplicate non-empty lines.
+    // Uses exact comparison (including indentation) so that closing braces
+    // at different nesting levels aren't falsely matched. Only catches true
+    // duplicates like repeated typedefs or forward declarations.
+    for line in &lines {
+        if line.trim().is_empty() {
+            result.push(line);
+            continue;
+        }
+        if let Some(prev) = result.last() {
+            if !prev.trim().is_empty() && *prev == *line {
+                continue; // skip consecutive exact duplicate
+            }
+        }
+        result.push(line);
+    }
+
+    // Pass 2: Collapse 3+ consecutive blank lines to 2 (one separator blank line).
+    let mut final_lines: Vec<&str> = Vec::with_capacity(result.len());
+    let mut consecutive_blanks = 0;
+    for line in &result {
+        if line.trim().is_empty() {
+            consecutive_blanks += 1;
+            if consecutive_blanks <= 2 {
+                final_lines.push(line);
+            }
+        } else {
+            consecutive_blanks = 0;
+            final_lines.push(line);
+        }
+    }
+
+    let mut out = final_lines.join("\n");
+    if content.ends_with('\n') && !out.ends_with('\n') {
+        out.push('\n');
+    }
+    out
+}
+
 /// Check if a line is an import/use/require statement.
 fn is_import_line(line: &str) -> bool {
     let trimmed = line.trim();
@@ -870,6 +923,11 @@ fn merge_imports_commutatively(base: &str, ours: &str, theirs: &str) -> String {
         .collect();
     merged_imports.extend(ours_added);
     merged_imports.extend(theirs_added);
+
+    // Sort imports alphabetically. Most languages and style guides expect
+    // sorted imports (#include in C/C++, use in Rust, import in TS/Python).
+    // This matches what human maintainers do when resolving merge conflicts.
+    merged_imports.sort_unstable();
 
     // Collect non-import lines from ours (preserve comments, blank lines, etc.)
     let ours_non_imports: Vec<&str> = ours
