@@ -109,7 +109,7 @@ weave-cli preview feature-branch
 ```
 weave-core       # Library: entity extraction, 3-way merge algorithm, reconstruction
 weave-driver     # Git merge driver binary (called by git via %O %A %B %L %P)
-weave-cli        # CLI: `weave setup` and `weave preview`
+weave-cli        # CLI: `weave-cli setup` and `weave-cli preview`
 ```
 
 Uses [sem-core](https://github.com/Ataraxy-Labs/sem) for entity extraction via tree-sitter grammars.
