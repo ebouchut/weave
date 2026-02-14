@@ -98,13 +98,17 @@ pub fn entity_merge_with_registry(
 
     // Large file fallback
     if base.len() > 1_000_000 || ours.len() > 1_000_000 || theirs.len() > 1_000_000 {
-        return line_level_fallback(base, ours, theirs);
+        return line_level_fallback(base, ours, theirs, file_path);
     }
 
-    // Try to get a parser for this file type
+    // If the file type isn't natively supported, the registry returns the fallback
+    // plugin (20-line chunks). Entity merge on arbitrary chunks produces WORSE
+    // results than line-level merge (confirmed on GitButler's .svelte files where
+    // chunk boundaries don't align with structural boundaries). So we skip entity
+    // merge entirely for fallback-plugin files and go straight to line-level merge.
     let plugin = match registry.get_plugin(file_path) {
-        Some(p) => p,
-        None => return line_level_fallback(base, ours, theirs),
+        Some(p) if p.id() != "fallback" => p,
+        _ => return line_level_fallback(base, ours, theirs, file_path),
     };
 
     // Extract entities from all three versions, filtering out nested entities
@@ -115,11 +119,11 @@ pub fn entity_merge_with_registry(
 
     // Fallback if parser returns nothing for non-empty content
     if base_entities.is_empty() && !base.trim().is_empty() {
-        return line_level_fallback(base, ours, theirs);
+        return line_level_fallback(base, ours, theirs, file_path);
     }
     // Allow empty entities if content is actually empty
     if ours_entities.is_empty() && !ours.trim().is_empty() && theirs_entities.is_empty() && !theirs.trim().is_empty() {
-        return line_level_fallback(base, ours, theirs);
+        return line_level_fallback(base, ours, theirs, file_path);
     }
 
     // Extract regions from all three
@@ -986,9 +990,49 @@ fn merge_imports_commutatively(base: &str, ours: &str, theirs: &str) -> String {
 /// finer-grained alignment before line-level merge. Inserts newlines around
 /// syntactic separators ({, }, ;) so that changes in different code blocks
 /// align independently, reducing spurious conflicts.
-fn line_level_fallback(base: &str, ours: &str, theirs: &str) -> MergeResult {
+///
+/// Sesame expansion is skipped for data formats (JSON, YAML, TOML, lock files)
+/// where `{`, `}`, `;` are structural content rather than code separators.
+/// Expanding them destroys alignment and produces far more conflicts (confirmed
+/// on GitButler: YAML went from 68 git markers to 192 weave markers with Sesame).
+fn line_level_fallback(base: &str, ours: &str, theirs: &str, file_path: &str) -> MergeResult {
     let mut stats = MergeStats::default();
     stats.used_fallback = true;
+
+    // Skip Sesame preprocessing for data formats where {/}/; are content, not separators
+    let skip = skip_sesame(file_path);
+
+    if skip {
+        // Plain line-level merge (no separator expansion)
+        return match diffy::merge(base, ours, theirs) {
+            Ok(merged) => {
+                let content = post_merge_cleanup(&merged);
+                MergeResult {
+                    content,
+                    conflicts: vec![],
+                    warnings: vec![],
+                    stats,
+                }
+            }
+            Err(conflicted) => {
+                stats.entities_conflicted = 1;
+                MergeResult {
+                    content: conflicted,
+                    conflicts: vec![EntityConflict {
+                        entity_name: "(file)".to_string(),
+                        entity_type: "file".to_string(),
+                        kind: ConflictKind::BothModified,
+                        complexity: classify_conflict(Some(base), Some(ours), Some(theirs)),
+                        ours_content: Some(ours.to_string()),
+                        theirs_content: Some(theirs.to_string()),
+                        base_content: Some(base.to_string()),
+                    }],
+                    warnings: vec![],
+                    stats,
+                }
+            }
+        };
+    }
 
     // Preprocess: expand separators into separate lines for finer alignment
     let base_expanded = expand_separators(base);
@@ -1594,6 +1638,24 @@ fn extract_member_name(line: &str) -> String {
     }
 }
 
+/// Returns true for data/config file formats where Sesame separator expansion
+/// (`{`, `}`, `;`) is counterproductive because those chars are structural
+/// content rather than code block separators.
+///
+/// Note: template files like .svelte/.vue are NOT included here because their
+/// embedded `<script>` sections contain real code where Sesame helps.
+fn skip_sesame(file_path: &str) -> bool {
+    let path_lower = file_path.to_lowercase();
+    let extensions = [
+        // Data/config formats
+        ".json", ".yaml", ".yml", ".toml", ".lock", ".xml", ".csv", ".tsv",
+        ".ini", ".cfg", ".conf", ".properties", ".env",
+        // Markup/document formats
+        ".md", ".markdown", ".txt", ".rst", ".svg", ".html", ".htm",
+    ];
+    extensions.iter().any(|ext| path_lower.ends_with(ext))
+}
+
 /// Expand syntactic separators into separate lines for finer merge alignment.
 /// Inspired by Sesame (arXiv:2407.18888): isolating separators lets line-based
 /// merge tools see block boundaries as independent change units.
@@ -1833,7 +1895,7 @@ export function agentB() {
         let base = "a\nb\nc\nd\ne\n";
         let ours = "A\nb\nc\nd\ne\n";
         let theirs = "a\nb\nc\nd\nE\n";
-        let result = line_level_fallback(base, ours, theirs);
+        let result = line_level_fallback(base, ours, theirs, "test.rs");
         assert!(result.is_clean());
         assert!(result.stats.used_fallback);
         assert_eq!(result.content, "A\nb\nc\nd\nE\n");
@@ -1845,7 +1907,7 @@ export function agentB() {
         let base = "a\nb\nc\n";
         let ours = "X\nb\nc\n";
         let theirs = "Y\nb\nc\n";
-        let result = line_level_fallback(base, ours, theirs);
+        let result = line_level_fallback(base, ours, theirs, "test.rs");
         assert!(!result.is_clean());
         assert!(result.stats.used_fallback);
     }

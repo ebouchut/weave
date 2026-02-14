@@ -4,7 +4,7 @@ version = "0.1.2"
 edition = "2021"
 
 [dependencies]
-sem-core = { git = "https://github.com/Ataraxy-Labs/sem", version = "0.2" }
+sem-core = { git = "https://github.com/Ataraxy-Labs/sem", version = "0.3" }
 diffy = "0.4"
 thiserror = "2"
 
