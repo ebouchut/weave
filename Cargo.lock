@@ -2045,6 +2045,7 @@ dependencies = [
  "colored",
  "diffy",
  "sem-core",
+ "serde",
  "serde_json",
  "weave-core",
  "weave-crdt",

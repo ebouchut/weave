@@ -55,6 +55,9 @@ enum Commands {
         /// Show line-level diff for weave vs human mismatches
         #[arg(long)]
         show_diff: bool,
+        /// Save interesting cases (wins, diffs, regressions) to a directory
+        #[arg(long)]
+        save: Option<String>,
     },
     /// Parse weave conflict markers and show a structured summary
     Summary {
@@ -89,7 +92,7 @@ fn main() {
             commands::status::run(file.as_deref(), agent.as_deref())
         }
         Commands::Bench => commands::bench::run(),
-        Commands::BenchRepo { ref repo, limit, show_diff } => commands::bench_repo::run(repo, limit, show_diff),
+        Commands::BenchRepo { ref repo, limit, show_diff, ref save } => commands::bench_repo::run(repo, limit, show_diff, save.as_deref()),
         Commands::Summary { ref file, json } => {
             commands::summary::run(file, json)
         }
