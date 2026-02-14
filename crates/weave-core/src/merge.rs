@@ -1,4 +1,6 @@
 use std::collections::{HashMap, HashSet};
+use std::io::Write;
+use std::process::Command;
 
 use sem_core::model::change::ChangeType;
 use sem_core::model::entity::SemanticEntity;
@@ -872,8 +874,15 @@ fn post_merge_cleanup(content: &str) -> String {
     out
 }
 
-/// Check if a line is an import/use/require statement.
+/// Check if a line is a top-level import/use/require statement.
+///
+/// Only matches unindented lines to avoid picking up conditional imports
+/// inside `if TYPE_CHECKING:` blocks or similar constructs.
 fn is_import_line(line: &str) -> bool {
+    // Skip indented lines: these are inside conditional blocks (TYPE_CHECKING, etc.)
+    if line.starts_with(' ') || line.starts_with('\t') {
+        return false;
+    }
     let trimmed = line.trim();
     trimmed.starts_with("import ")
         || trimmed.starts_with("from ")
@@ -887,95 +896,53 @@ fn is_import_line(line: &str) -> bool {
 
 /// Merge import blocks commutatively (as unordered sets).
 ///
-/// Algorithm (from Mergiraf's unordered merge):
-/// 1. Compute imports deleted by ours (in base but not ours)
-/// 2. Compute imports deleted by theirs (in base but not theirs)
-/// 3. Compute imports added by ours (in ours but not base)
-/// 4. Compute imports added by theirs (in theirs but not base)
-/// 5. Start with base imports, remove both deletions, add both additions
-/// 6. Preserve non-import lines from ours version
+/// Walks the ours version line-by-line, preserving blank lines and non-import
+/// content (comments, TYPE_CHECKING blocks) in their original positions.
+/// Import lines are merged as sets: base - deletions + additions.
+/// New imports from theirs are appended after the last import group.
 fn merge_imports_commutatively(base: &str, ours: &str, theirs: &str) -> String {
-    let base_imports: Vec<&str> = base.lines().filter(|l| is_import_line(l)).collect();
-    let ours_imports: Vec<&str> = ours.lines().filter(|l| is_import_line(l)).collect();
-    let theirs_imports: Vec<&str> = theirs.lines().filter(|l| is_import_line(l)).collect();
+    let base_imports: HashSet<&str> = base.lines().filter(|l| is_import_line(l)).collect();
+    let ours_imports: HashSet<&str> = ours.lines().filter(|l| is_import_line(l)).collect();
+    let theirs_imports: HashSet<&str> = theirs.lines().filter(|l| is_import_line(l)).collect();
 
-    let base_set: HashSet<&str> = base_imports.iter().copied().collect();
-    let ours_set: HashSet<&str> = ours_imports.iter().copied().collect();
-    let theirs_set: HashSet<&str> = theirs_imports.iter().copied().collect();
+    // Theirs deleted: in base but removed by theirs. Remove from ours output.
+    let theirs_deleted: HashSet<&str> = base_imports.difference(&theirs_imports).copied().collect();
 
-    // Deletions: in base but removed by a branch
-    let ours_deleted: HashSet<&str> = base_set.difference(&ours_set).copied().collect();
-    let theirs_deleted: HashSet<&str> = base_set.difference(&theirs_set).copied().collect();
-
-    // Additions: in branch but not in base
-    let ours_added: Vec<&str> = ours_imports
-        .iter()
-        .filter(|i| !base_set.contains(**i))
-        .copied()
-        .collect();
-    let theirs_added: Vec<&str> = theirs_imports
-        .iter()
-        .filter(|i| !base_set.contains(**i) && !ours_set.contains(**i))
-        .copied()
-        .collect();
-
-    // Build merged import list: base - deletions + additions
-    let mut merged_imports: Vec<&str> = base_imports
-        .iter()
-        .filter(|i| !ours_deleted.contains(**i) && !theirs_deleted.contains(**i))
-        .copied()
-        .collect();
-    merged_imports.extend(ours_added);
-    merged_imports.extend(theirs_added);
-
-    // Sort imports alphabetically. Most languages and style guides expect
-    // sorted imports (#include in C/C++, use in Rust, import in TS/Python).
-    // This matches what human maintainers do when resolving merge conflicts.
-    merged_imports.sort_unstable();
-
-    // Collect non-import lines from ours (preserve comments, blank lines, etc.)
-    let ours_non_imports: Vec<&str> = ours
+    // Theirs added: new in theirs, not in base, not already in ours
+    let theirs_added: Vec<&str> = theirs
         .lines()
-        .filter(|l| !is_import_line(l))
+        .filter(|l| is_import_line(l) && !base_imports.contains(l) && !ours_imports.contains(l))
         .collect();
 
-    // Reconstruct: non-import preamble lines + merged imports
+    // Walk ours line-by-line, preserving structure (groups, blank lines, non-import content)
     let mut result_lines: Vec<&str> = Vec::new();
+    let mut last_import_idx: Option<usize> = None;
 
-    // Add non-import lines that come before first import in ours
-    let first_import_idx = ours
-        .lines()
-        .position(|l| is_import_line(l));
-
-    if let Some(idx) = first_import_idx {
-        for (i, line) in ours.lines().enumerate() {
-            if i < idx {
-                result_lines.push(line);
-            }
-        }
-    }
-
-    // Add merged imports
-    result_lines.extend(&merged_imports);
-
-    // Add non-import lines that come after imports in ours
-    if let Some(idx) = first_import_idx {
-        for (i, line) in ours.lines().enumerate() {
-            if i <= idx {
-                continue;
-            }
-            if is_import_line(line) {
+    for line in ours.lines() {
+        if is_import_line(line) {
+            // Skip if theirs deleted this import
+            if theirs_deleted.contains(line) {
                 continue;
             }
             result_lines.push(line);
+            last_import_idx = Some(result_lines.len() - 1);
+        } else {
+            result_lines.push(line);
         }
-    } else {
-        // No imports in ours, just add non-import lines
-        result_lines.extend(&ours_non_imports);
+    }
+
+    // Insert theirs' additions after the last import line
+    if !theirs_added.is_empty() {
+        let insert_pos = match last_import_idx {
+            Some(idx) => idx + 1,
+            None => 0,
+        };
+        for (i, add) in theirs_added.iter().enumerate() {
+            result_lines.insert(insert_pos + i, add);
+        }
     }
 
     let mut result = result_lines.join("\n");
-    // Preserve trailing newline
     if ours.ends_with('\n') || theirs.ends_with('\n') {
         if !result.ends_with('\n') {
             result.push('\n');
@@ -1003,35 +970,10 @@ fn line_level_fallback(base: &str, ours: &str, theirs: &str, file_path: &str) ->
     let skip = skip_sesame(file_path);
 
     if skip {
-        // Plain line-level merge (no separator expansion)
-        return match diffy::merge(base, ours, theirs) {
-            Ok(merged) => {
-                let content = post_merge_cleanup(&merged);
-                MergeResult {
-                    content,
-                    conflicts: vec![],
-                    warnings: vec![],
-                    stats,
-                }
-            }
-            Err(conflicted) => {
-                stats.entities_conflicted = 1;
-                MergeResult {
-                    content: conflicted,
-                    conflicts: vec![EntityConflict {
-                        entity_name: "(file)".to_string(),
-                        entity_type: "file".to_string(),
-                        kind: ConflictKind::BothModified,
-                        complexity: classify_conflict(Some(base), Some(ours), Some(theirs)),
-                        ours_content: Some(ours.to_string()),
-                        theirs_content: Some(theirs.to_string()),
-                        base_content: Some(base.to_string()),
-                    }],
-                    warnings: vec![],
-                    stats,
-                }
-            }
-        };
+        // Use git merge-file for data formats so we match git's output exactly.
+        // diffy::merge uses a different diff algorithm that can produce more
+        // conflict markers on structured data like lock files.
+        return git_merge_file(base, ours, theirs, &mut stats);
     }
 
     // Preprocess: expand separators into separate lines for finer alignment
@@ -1077,6 +1019,108 @@ fn line_level_fallback(base: &str, ours: &str, theirs: &str, file_path: &str) ->
                         stats,
                     }
                 }
+            }
+        }
+    }
+}
+
+/// Shell out to `git merge-file` for an exact match with git's line-level merge.
+///
+/// We use this instead of `diffy::merge` for data formats (lock files, JSON, YAML, TOML)
+/// where weave can't improve on git. `diffy` uses a different diff algorithm that can
+/// produce more conflict markers on structured data (e.g. 22 markers vs git's 19 on uv.lock).
+fn git_merge_file(base: &str, ours: &str, theirs: &str, stats: &mut MergeStats) -> MergeResult {
+    let dir = match tempfile::tempdir() {
+        Ok(d) => d,
+        Err(_) => return diffy_fallback(base, ours, theirs, stats),
+    };
+
+    let base_path = dir.path().join("base");
+    let ours_path = dir.path().join("ours");
+    let theirs_path = dir.path().join("theirs");
+
+    let write_ok = (|| -> std::io::Result<()> {
+        std::fs::File::create(&base_path)?.write_all(base.as_bytes())?;
+        std::fs::File::create(&ours_path)?.write_all(ours.as_bytes())?;
+        std::fs::File::create(&theirs_path)?.write_all(theirs.as_bytes())?;
+        Ok(())
+    })();
+
+    if write_ok.is_err() {
+        return diffy_fallback(base, ours, theirs, stats);
+    }
+
+    // git merge-file writes result to the first file (ours) in place
+    let output = Command::new("git")
+        .arg("merge-file")
+        .arg("-p") // print to stdout instead of modifying ours in place
+        .arg(&ours_path)
+        .arg(&base_path)
+        .arg(&theirs_path)
+        .output();
+
+    match output {
+        Ok(result) => {
+            let content = String::from_utf8_lossy(&result.stdout).into_owned();
+            if result.status.success() {
+                // Exit 0 = clean merge
+                MergeResult {
+                    content: post_merge_cleanup(&content),
+                    conflicts: vec![],
+                    warnings: vec![],
+                    stats: stats.clone(),
+                }
+            } else {
+                // Exit >0 = conflicts (exit code = number of conflicts)
+                stats.entities_conflicted = 1;
+                MergeResult {
+                    content,
+                    conflicts: vec![EntityConflict {
+                        entity_name: "(file)".to_string(),
+                        entity_type: "file".to_string(),
+                        kind: ConflictKind::BothModified,
+                        complexity: classify_conflict(Some(base), Some(ours), Some(theirs)),
+                        ours_content: Some(ours.to_string()),
+                        theirs_content: Some(theirs.to_string()),
+                        base_content: Some(base.to_string()),
+                    }],
+                    warnings: vec![],
+                    stats: stats.clone(),
+                }
+            }
+        }
+        // git not available, fall back to diffy
+        Err(_) => diffy_fallback(base, ours, theirs, stats),
+    }
+}
+
+/// Fallback to diffy::merge when git merge-file is unavailable.
+fn diffy_fallback(base: &str, ours: &str, theirs: &str, stats: &mut MergeStats) -> MergeResult {
+    match diffy::merge(base, ours, theirs) {
+        Ok(merged) => {
+            let content = post_merge_cleanup(&merged);
+            MergeResult {
+                content,
+                conflicts: vec![],
+                warnings: vec![],
+                stats: stats.clone(),
+            }
+        }
+        Err(conflicted) => {
+            stats.entities_conflicted = 1;
+            MergeResult {
+                content: conflicted,
+                conflicts: vec![EntityConflict {
+                    entity_name: "(file)".to_string(),
+                    entity_type: "file".to_string(),
+                    kind: ConflictKind::BothModified,
+                    complexity: classify_conflict(Some(base), Some(ours), Some(theirs)),
+                    ours_content: Some(ours.to_string()),
+                    theirs_content: Some(theirs.to_string()),
+                    base_content: Some(base.to_string()),
+                }],
+                warnings: vec![],
+                stats: stats.clone(),
             }
         }
     }
