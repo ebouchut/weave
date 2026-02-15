@@ -551,9 +551,11 @@ fn both_make_identical_changes() {
 }
 
 #[test]
-fn ts_class_entity_extraction_is_single_entity() {
-    // Verify that sem-core extracts a class as a single entity (not class + methods)
-    // This is why inner entity merge is needed — methods aren't separate entities
+fn ts_class_entity_extraction_includes_child_methods() {
+    // sem-core extracts a class AND its methods as child entities.
+    // filter_nested_entities() reduces to just the class for top-level matching,
+    // but inner entity merge uses the child entities for tree-sitter-accurate
+    // method decomposition.
     let ts_class = r#"export class Calculator {
     add(a: number, b: number): number {
         return a + b;
@@ -568,9 +570,17 @@ fn ts_class_entity_extraction_is_single_entity() {
     let plugin = registry.get_plugin("test.ts").unwrap();
     let entities = plugin.extract_entities(ts_class, "test.ts");
 
-    assert_eq!(entities.len(), 1, "Class should be a single entity");
+    assert_eq!(entities.len(), 3, "Should have class + 2 child methods");
     assert_eq!(entities[0].entity_type, "class");
     assert_eq!(entities[0].name, "Calculator");
+
+    let add = entities.iter().find(|e| e.name == "add").unwrap();
+    assert_eq!(add.entity_type, "method");
+    assert!(add.parent_id.is_some(), "add should have parent_id");
+
+    let sub = entities.iter().find(|e| e.name == "subtract").unwrap();
+    assert_eq!(sub.entity_type, "method");
+    assert!(sub.parent_id.is_some(), "subtract should have parent_id");
 }
 
 #[test]

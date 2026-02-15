@@ -151,11 +151,16 @@ pub fn entity_merge_with_registry(
         _ => return line_level_fallback(base, ours, theirs, file_path),
     };
 
-    // Extract entities from all three versions, filtering out nested entities
-    // (e.g. variables inside class methods — handled as part of the parent entity)
-    let base_entities = filter_nested_entities(plugin.extract_entities(base, file_path));
-    let ours_entities = filter_nested_entities(plugin.extract_entities(ours, file_path));
-    let theirs_entities = filter_nested_entities(plugin.extract_entities(theirs, file_path));
+    // Extract entities from all three versions. Keep unfiltered lists for inner merge
+    // (child entities provide tree-sitter-based method decomposition for classes).
+    let base_all = plugin.extract_entities(base, file_path);
+    let ours_all = plugin.extract_entities(ours, file_path);
+    let theirs_all = plugin.extract_entities(theirs, file_path);
+
+    // Filter out nested entities for top-level matching and region extraction
+    let base_entities = filter_nested_entities(base_all.clone());
+    let ours_entities = filter_nested_entities(ours_all.clone());
+    let theirs_entities = filter_nested_entities(theirs_all.clone());
 
     // Fallback if parser returns nothing for non-empty content
     if base_entities.is_empty() && !base.trim().is_empty() {
@@ -334,6 +339,9 @@ pub fn entity_merge_with_registry(
             &base_region_content,
             &ours_region_content,
             &theirs_region_content,
+            &base_all,
+            &ours_all,
+            &theirs_all,
             &mut stats,
         );
 
@@ -417,6 +425,9 @@ fn resolve_entity(
     base_region_content: &HashMap<String, String>,
     ours_region_content: &HashMap<String, String>,
     theirs_region_content: &HashMap<String, String>,
+    base_all: &[SemanticEntity],
+    ours_all: &[SemanticEntity],
+    theirs_all: &[SemanticEntity],
     stats: &mut MergeStats,
 ) -> ResolvedEntity {
     // Helper: get region content (from file lines) for an entity, falling back to entity.content
@@ -512,7 +523,21 @@ fn resolve_entity(
                                 // Strategy 2: inner entity merge for container types
                                 // (LastMerge insight: class members are unordered children)
                                 if is_container_entity_type(&ours.entity_type) {
-                                    if let Some(inner) = try_inner_entity_merge(&base_rc, &ours_rc, &theirs_rc) {
+                                    let base_children = in_base
+                                        .map(|b| get_child_entities(b, base_all))
+                                        .unwrap_or_default();
+                                    let ours_children = get_child_entities(ours, ours_all);
+                                    let theirs_children = in_theirs
+                                        .map(|t| get_child_entities(t, theirs_all))
+                                        .unwrap_or_default();
+                                    let base_start = in_base.map(|b| b.start_line).unwrap_or(1);
+                                    let ours_start = ours.start_line;
+                                    let theirs_start = in_theirs.map(|t| t.start_line).unwrap_or(1);
+                                    if let Some(inner) = try_inner_entity_merge(
+                                        &base_rc, &ours_rc, &theirs_rc,
+                                        &base_children, &ours_children, &theirs_children,
+                                        base_start, ours_start, theirs_start,
+                                    ) {
                                         if inner.has_conflicts {
                                             // Inner merge produced per-member conflicts:
                                             // content has scoped markers for just the conflicted
@@ -1280,6 +1305,19 @@ fn filter_nested_entities(entities: Vec<SemanticEntity>) -> Vec<SemanticEntity> 
         .collect()
 }
 
+/// Get child entities of a parent, sorted by start line.
+fn get_child_entities<'a>(
+    parent: &SemanticEntity,
+    all_entities: &'a [SemanticEntity],
+) -> Vec<&'a SemanticEntity> {
+    let mut children: Vec<&SemanticEntity> = all_entities
+        .iter()
+        .filter(|e| e.parent_id.as_deref() == Some(&parent.id))
+        .collect();
+    children.sort_by_key(|e| e.start_line);
+    children
+}
+
 /// Compute a body hash for rename detection: the entity content with the entity
 /// name replaced at word boundaries by a placeholder, so entities with identical
 /// bodies but different names produce the same hash.
@@ -1427,6 +1465,87 @@ struct InnerMergeResult {
     has_conflicts: bool,
 }
 
+/// Convert sem-core child entities to MemberChunks for inner merge.
+///
+/// Uses child entity line positions to extract content from the container text,
+/// including any leading decorators/annotations that tree-sitter attaches as
+/// sibling nodes rather than part of the method node.
+fn children_to_chunks(
+    children: &[&SemanticEntity],
+    container_content: &str,
+    container_start_line: usize,
+) -> Vec<MemberChunk> {
+    if children.is_empty() {
+        return Vec::new();
+    }
+
+    let lines: Vec<&str> = container_content.lines().collect();
+    let mut chunks = Vec::new();
+
+    for (i, child) in children.iter().enumerate() {
+        let child_start_idx = child.start_line.saturating_sub(container_start_line);
+        let child_end_idx = child.end_line.saturating_sub(container_start_line);
+
+        if child_end_idx > lines.len() || child_start_idx >= lines.len() {
+            // Position out of range, fall back to entity content
+            chunks.push(MemberChunk {
+                name: child.name.clone(),
+                content: child.content.clone(),
+            });
+            continue;
+        }
+
+        // Determine the earliest line we can claim (previous child's end, or body start)
+        let floor = if i > 0 {
+            children[i - 1].end_line.saturating_sub(container_start_line)
+        } else {
+            // First child: start after the container header line (the `{` or `:` line)
+            // Find the line containing `{` or ending with `:`
+            let header_end = lines
+                .iter()
+                .position(|l| l.contains('{') || l.trim().ends_with(':'))
+                .map(|p| p + 1)
+                .unwrap_or(0);
+            header_end
+        };
+
+        // Scan backwards from child_start_idx to include decorators/annotations/comments
+        let mut content_start = child_start_idx;
+        while content_start > floor {
+            let prev = content_start - 1;
+            let trimmed = lines[prev].trim();
+            if trimmed.starts_with('@')
+                || trimmed.starts_with("#[")
+                || trimmed.starts_with("//")
+                || trimmed.starts_with("///")
+                || trimmed.starts_with("/**")
+                || trimmed.starts_with("* ")
+                || trimmed == "*/"
+            {
+                content_start = prev;
+            } else if trimmed.is_empty() && content_start > floor + 1 {
+                // Allow one blank line between decorator and method
+                content_start = prev;
+            } else {
+                break;
+            }
+        }
+
+        // Skip leading blank lines
+        while content_start < child_start_idx && lines[content_start].trim().is_empty() {
+            content_start += 1;
+        }
+
+        let chunk_content: String = lines[content_start..child_end_idx].join("\n");
+        chunks.push(MemberChunk {
+            name: child.name.clone(),
+            content: chunk_content,
+        });
+    }
+
+    chunks
+}
+
 /// Try recursive inner entity merge for container types (classes, impls, etc.).
 ///
 /// Inspired by LastMerge (arXiv:2507.19687): class members are "unordered children" —
@@ -1435,10 +1554,33 @@ struct InnerMergeResult {
 ///
 /// Returns Some(result) if chunking succeeded, None if we can't parse the container.
 /// The result may contain per-member conflict markers (scoped conflicts).
-fn try_inner_entity_merge(base: &str, ours: &str, theirs: &str) -> Option<InnerMergeResult> {
-    let base_chunks = extract_member_chunks(base)?;
-    let ours_chunks = extract_member_chunks(ours)?;
-    let theirs_chunks = extract_member_chunks(theirs)?;
+fn try_inner_entity_merge(
+    base: &str,
+    ours: &str,
+    theirs: &str,
+    base_children: &[&SemanticEntity],
+    ours_children: &[&SemanticEntity],
+    theirs_children: &[&SemanticEntity],
+    base_start_line: usize,
+    ours_start_line: usize,
+    theirs_start_line: usize,
+) -> Option<InnerMergeResult> {
+    // If sem-core produced child entities, use them directly instead of the
+    // indentation heuristic. This gives tree-sitter-accurate method boundaries.
+    let (base_chunks, ours_chunks, theirs_chunks) = if !ours_children.is_empty() || !theirs_children.is_empty() {
+        (
+            children_to_chunks(base_children, base, base_start_line),
+            children_to_chunks(ours_children, ours, ours_start_line),
+            children_to_chunks(theirs_children, theirs, theirs_start_line),
+        )
+    } else {
+        // Fallback: indentation heuristic for languages without child entity support
+        (
+            extract_member_chunks(base)?,
+            extract_member_chunks(ours)?,
+            extract_member_chunks(theirs)?,
+        )
+    };
 
     // Need at least 1 member to attempt inner merge
     // (Even single-member containers benefit from decorator-aware merge)
