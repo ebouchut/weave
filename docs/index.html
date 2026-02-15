@@ -159,10 +159,75 @@
       </div>
     </section>
 
-    <!-- Benchmark Results -->
+    <!-- Real-World Benchmarks -->
     <section>
-      <h2>Benchmark results</h2>
-      <p class="section-desc">Run <code style="background:var(--surface);padding:2px 6px;border-radius:3px;font-size:12px;">weave bench</code> to reproduce. 31 merge scenarios across 7 languages, release build on Apple Silicon.</p>
+      <h2>Real-world benchmarks</h2>
+      <p class="section-desc">Tested on real merge commits from major open-source repos. For each merge commit, we replay the merge with both git and weave, then compare against the human-authored result. Every "win" is a merge where git conflicted but weave resolved cleanly.</p>
+      <div class="comparison-table">
+        <table>
+          <thead>
+            <tr>
+              <th>Repository</th>
+              <th>Language</th>
+              <th>Merges</th>
+              <th>Wins</th>
+              <th>Regressions</th>
+              <th>Human Match</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><a href="https://github.com/git/git" style="color:var(--cyan)">git/git</a></td>
+              <td>C</td>
+              <td>1,319</td>
+              <td class="win">39</td>
+              <td class="win">0</td>
+              <td>64%</td>
+            </tr>
+            <tr>
+              <td><a href="https://github.com/pallets/flask" style="color:var(--cyan)">Flask</a></td>
+              <td>Python</td>
+              <td>56</td>
+              <td class="win">14</td>
+              <td class="win">0</td>
+              <td>57%</td>
+            </tr>
+            <tr>
+              <td><a href="https://github.com/python/cpython" style="color:var(--cyan)">CPython</a></td>
+              <td>C / Python</td>
+              <td>256</td>
+              <td class="win">7</td>
+              <td class="win">0</td>
+              <td>29%</td>
+            </tr>
+            <tr>
+              <td><a href="https://github.com/golang/go" style="color:var(--cyan)">Go</a></td>
+              <td>Go</td>
+              <td>1,247</td>
+              <td class="win">19</td>
+              <td class="win">0</td>
+              <td>58%</td>
+            </tr>
+            <tr>
+              <td><a href="https://github.com/microsoft/TypeScript" style="color:var(--cyan)">TypeScript</a></td>
+              <td>TypeScript</td>
+              <td>1,639</td>
+              <td class="win">4</td>
+              <td style="color:var(--yellow)">3</td>
+              <td>75%</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p style="font-size:13px;color:var(--dim);margin-top:16px;line-height:1.7;">
+        <strong style="color:var(--green)">Zero regressions</strong> on C, Python, and Go. Run <code style="background:var(--surface);padding:2px 6px;border-radius:3px;font-size:12px;">weave bench-repo &lt;path&gt;</code> on any git repo to reproduce.
+      </p>
+    </section>
+
+    <!-- Synthetic Benchmark Results -->
+    <section>
+      <h2>Synthetic benchmarks</h2>
+      <p class="section-desc">31 hand-crafted merge scenarios across 7 languages. Run <code style="background:var(--surface);padding:2px 6px;border-radius:3px;font-size:12px;">weave bench</code> to reproduce.</p>
       <div class="comparison-table">
         <table>
           <thead>
