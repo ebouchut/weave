@@ -2,6 +2,7 @@
 name = "weave-core"
 version = "0.1.4"
 edition = "2021"
+license = "MIT OR Apache-2.0"
 
 [dependencies]
 sem-core = { git = "https://github.com/Ataraxy-Labs/sem", version = "0.3" }
